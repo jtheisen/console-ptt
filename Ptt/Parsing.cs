@@ -21,7 +21,9 @@ public enum InputCharClass
 
     Letter,
     SymbolLetter,
-    Operator, // includes relations
+    Operator,
+    OpeningBrace,
+    ClosingBrace,
     OpeningBracket,
     ClosingBracket
 }
@@ -145,9 +147,21 @@ public class ParsedQuantization : ParsedResult
     public required ParsedResult head;
     public required ParsedResult body;
 
+    public Boolean IsBraceExpression => token.cls == InputCharClass.OpeningBrace;
+
     public override Boolean IsEmpty => false;
 
-    public override String ToString() => $"{token} {head}: {body}";
+    public override String ToString()
+    {
+        if (IsBraceExpression)
+        {
+            return $"{{ {head}: {body} }}";
+        }
+        else
+        {
+            return $"{token} {head}: {body}";
+        }
+    }
 }
 
 public class ParserGuide
@@ -308,6 +322,10 @@ public class Parser
                 return InputCharClass.Colon;
             case '.':
                 return InputCharClass.Dot;
+            case '{':
+                return InputCharClass.OpeningBrace;
+            case '}':
+                return InputCharClass.ClosingBrace;
             default:
                 break;
         }
@@ -407,34 +425,55 @@ public class Parser
         yield return token;
     }
 
-    // Parses atoms and abstractions
+    // Parses atoms, quantizations and brace expressions
     public ParsedResult ParseLetters(IEnumerator<InputToken> input)
     {
         var firstToken = input.Current;
 
         var isQuantization = guide.IsQuantizationSymbol(firstToken.TokenSpan, out var ownPrecedence);
 
+        var isBraceExpression = firstToken.cls == InputCharClass.OpeningBrace;
+
         Increment(ref input);
 
-        if (isQuantization)
+        if (isQuantization || isBraceExpression)
         {
+            if (isBraceExpression)
+            {
+                ownPrecedence = Double.MinValue;
+            }
+
             var head = ParseExpression(input, outerPrecedence: Double.MinValue);
 
             if (!head)
             {
-                Throw(firstToken, "Expected abstraction to be followed by a head");
+                Throw(firstToken, "Expected quantization to be followed by a head");
             }
 
             if (input.Current.cls == InputCharClass.Colon)
             {
                 Increment(ref input);
             }
+            else if (!isQuantization)
+            {
+                Throw(firstToken, "Expected a colon to terminate the head of quantization");
+            }
 
             var body = ParseExpression(input, outerPrecedence: ownPrecedence);
 
             if (!body)
             {
-                Throw(firstToken, "Expected abstraction to be followed by a body after the head");
+                Throw(firstToken, "Expected quantization to be followed by a body after the head");
+            }
+
+            if (isBraceExpression)
+            {
+                if (input.Current.cls != InputCharClass.ClosingBrace)
+                {
+                    Throw(input.Current, "Expected closing brace");
+                }
+
+                Increment(ref input);
             }
 
             return new ParsedQuantization { token = firstToken, head = head, body = body };
@@ -442,17 +481,6 @@ public class Parser
         else
         {
             var result = new ParsedAtom { token = firstToken };
-
-            // Just for nicer error messages
-            //switch (input.Current.cls)
-            //{
-            //    case InputCharClass.Letter:
-            //    case InputCharClass.SymbolLetter:
-            //        Throw(input.Current, "Letter token is directly following a previous one, which is not known to be an abstraction symbol");
-            //        break;
-            //    default:
-            //        break;
-            //}
 
             return result;
         }
@@ -552,6 +580,7 @@ public class Parser
                     break;
                 case InputCharClass.Letter:
                 case InputCharClass.SymbolLetter:
+                case InputCharClass.OpeningBrace:
                     if (pendingResult is not null)
                     {
                         if (guide.IsBooleanQuantizationSymbol(nextToken.TokenSpan))
@@ -560,7 +589,7 @@ public class Parser
                         }
                         else
                         {
-                            Throw(nextToken, "Letter token can't follow an expression");
+                            Throw(nextToken, $"Token of type {nextToken.cls} can't follow an expression");
                         }
                     }
                     else
@@ -671,6 +700,7 @@ public class Parser
                 case InputCharClass.Dot:
                 case InputCharClass.Eof:
                 case InputCharClass.ClosingBracket:
+                case InputCharClass.ClosingBrace:
                     return GetResult();
                 default:
                     Throw(nextToken, $"Unknown input class {nextToken.cls}");

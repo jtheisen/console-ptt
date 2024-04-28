@@ -85,6 +85,10 @@ public class ParsingTests
     [DataRow("∑ n∊N: /n^x", "∑ n∊N: /(n^x)")]
     [DataRow("∀ x∊X ∃ y∊Y: x<y", "∀ x∊X: ∃ y∊Y: x<y")]
     [DataRow("∀ x∊X,X⊆Y ∃ y∊Y: x<y", "∀ (x∊X),(X⊆Y): ∃ y∊Y: x<y")]
+
+    [DataRow("{ n∊N: n>m }", "{ n∊N: n>m }")]
+    //[DataRow("", "")]
+    //[DataRow("", "")]
     public void TestExpressionParsing(String input, String? expectedEncoded)
     {
         var parser = new Parser();
