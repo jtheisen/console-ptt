@@ -158,7 +158,10 @@ public class ParserGuide
 
     static String QuantizationCharacters = "∀∃";
 
-    static String SymbolLetters = "∀∃∑∏";
+    static String SymbolLetters =
+        "∀∃∑∏";
+    static String SymbolLetterPrecedencePairings =
+        "∨∨+*";
 
     static Dictionary<Char, Double> precedences;
 
@@ -191,18 +194,28 @@ public class ParserGuide
         }
     }
 
+    Double? GetPrecedenceForOperatorCharacter(Char chr)
+    {
+        if (RelationSymbols.IndexOf(chr) != -1)
+        {
+            return 0;
+        }
+
+        if (precedences.TryGetValue(chr, out var precedence))
+        {
+            return precedence;
+        }
+
+        return null;
+    }
+
     public Double GetPrecedence(ReadOnlySpan<Char> op)
     {
         if (op.Length == 1)
         {
             var chr = op[0];
 
-            if (RelationSymbols.IndexOf(chr) != -1 )
-            {
-                return 0;
-            }
-
-            if (precedences.TryGetValue(chr, out var precedence))
+            if (GetPrecedenceForOperatorCharacter(chr) is Double precedence)
             {
                 return precedence;
             }
@@ -211,15 +224,42 @@ public class ParserGuide
         throw new Exception($"Unknown operator {new String(op)}");
     }
 
-    public Boolean IsSymbolLetter(Char c) => SymbolLetters.IndexOf(c) >= 0;
-
-    public Boolean IsAbstractionSymbol(ReadOnlySpan<Char> op)
+    public Boolean IsSymbolLetter(Char c, out Double precedence)
     {
+        precedence = 0;
+
+        var i = SymbolLetters.IndexOf(c);
+        
+        if (i >= 0)
+        {
+            var pairing = SymbolLetterPrecedencePairings[i];
+
+            if (GetPrecedenceForOperatorCharacter(pairing) is Double p)
+            {
+                precedence = p;
+            }
+            else
+            {
+                throw new Exception($"Unkown pairing for '{c}'");
+            }
+
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    public Boolean IsQuantizationSymbol(ReadOnlySpan<Char> op, out Double precedence)
+    {
+        precedence = 0;
+
         if (op.Length == 1)
         {
             var chr = op[0];
 
-            return SymbolLetters.IndexOf(chr) >= 0;
+            return IsSymbolLetter(chr, out precedence);
         }
         else
         {
@@ -253,7 +293,7 @@ public class Parser
             return InputCharClass.Space;
         }
 
-        if (guide.IsSymbolLetter(c))
+        if (guide.IsSymbolLetter(c, out _))
         {
             return InputCharClass.SymbolLetter;
         }
@@ -368,15 +408,15 @@ public class Parser
     }
 
     // Parses atoms and abstractions
-    public ParsedResult ParseLetters(IEnumerator<InputToken> input, Double outerPrecedence = 0)
+    public ParsedResult ParseLetters(IEnumerator<InputToken> input)
     {
         var firstToken = input.Current;
 
-        var isAbstraction = guide.IsAbstractionSymbol(firstToken.TokenSpan);
+        var isQuantization = guide.IsQuantizationSymbol(firstToken.TokenSpan, out var ownPrecedence);
 
         Increment(ref input);
 
-        if (isAbstraction)
+        if (isQuantization)
         {
             var head = ParseExpression(input, outerPrecedence: Double.MinValue);
 
@@ -390,7 +430,7 @@ public class Parser
                 Increment(ref input);
             }
 
-            var body = ParseExpression(input, outerPrecedence: Double.MinValue);
+            var body = ParseExpression(input, outerPrecedence: ownPrecedence);
 
             if (!body)
             {
@@ -525,7 +565,7 @@ public class Parser
                     }
                     else
                     {
-                        pendingResult = ParseLetters(input, outerPrecedence: outerPrecedence);
+                        pendingResult = ParseLetters(input);
                     }
                     break;
                 case InputCharClass.Comma:
