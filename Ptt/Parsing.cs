@@ -1,6 +1,4 @@
-﻿using System.Collections;
-using System.Diagnostics;
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 
 namespace Ptt;
@@ -22,6 +20,7 @@ public enum InputCharClass
     Dot,
 
     Letter,
+    SymbolLetter,
     Operator, // includes relations
     OpeningBracket,
     ClosingBracket
@@ -65,6 +64,7 @@ public static class InputCharClassExtensions
     {
         switch (cls)
         {
+            case InputCharClass.SymbolLetter:
             case InputCharClass.Comma:
             case InputCharClass.Semikolon:
             case InputCharClass.Colon:
@@ -89,11 +89,18 @@ public class ParsingException : Exception
 
 public class ParsedResult
 {
+    public static ParsedResult EmptyResult = new ParsedResult();
+
+    public virtual Boolean IsEmpty => true;
+
+    public static implicit operator Boolean(ParsedResult self) => !self.IsEmpty;
 }
 
 public class ParsedChain : ParsedResult
 {
     public required List<(ParsedResult item, InputToken op)> constituents;
+
+    public override Boolean IsEmpty => constituents.Count == 0;
 
     public override String ToString()
     {
@@ -124,23 +131,38 @@ public class ParsedChain : ParsedResult
 
 public class ParsedAtom : ParsedResult
 {
-    public InputToken token;
+    public required InputToken token;
 
-    public override String ToString()
-    {
-        return token.TokenString;
-    }
+    public override Boolean IsEmpty => false;
+
+    public override String ToString() => token.ToString();
 }
 
-public class PrecedenceProvider
+public class ParsedQuantization : ParsedResult
+{
+    public required InputToken token;
+
+    public required ParsedResult head;
+    public required ParsedResult body;
+
+    public override Boolean IsEmpty => false;
+
+    public override String ToString() => $"{token} {head}: {body}";
+}
+
+public class ParserGuide
 {
     static String BooleanSymbols = "⇒⇐⇔ ,∨∧ =";
     static String DomainSymbols = "+- */ ^";
     static String RelationSymbols = "<>≤≥ ⊂⊃ ⊆⊇ ∊∍ ∈∋ ϵ";
 
+    static String QuantizationCharacters = "∀∃";
+
+    static String SymbolLetters = "∀∃∑∏";
+
     static Dictionary<Char, Double> precedences;
 
-    static PrecedenceProvider()
+    static ParserGuide()
     {
         precedences = new Dictionary<Char, Double>();
 
@@ -188,15 +210,52 @@ public class PrecedenceProvider
 
         throw new Exception($"Unknown operator {new String(op)}");
     }
+
+    public Boolean IsSymbolLetter(Char c) => SymbolLetters.IndexOf(c) >= 0;
+
+    public Boolean IsAbstractionSymbol(ReadOnlySpan<Char> op)
+    {
+        if (op.Length == 1)
+        {
+            var chr = op[0];
+
+            return SymbolLetters.IndexOf(chr) >= 0;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    public Boolean IsQuantizationSymbol(ReadOnlySpan<Char> op)
+    {
+        if (op.Length == 1)
+        {
+            var chr = op[0];
+
+            return QuantizationCharacters.IndexOf(chr) >= 0;
+        }
+        else
+        {
+            return false;
+        }
+    }
 }
 
 public class Parser
 {
-    static InputCharClass GetInputCharClass(Char c)
+    ParserGuide guide = new ParserGuide();
+
+    InputCharClass GetInputCharClass(Char c)
     {
         if (Char.IsWhiteSpace(c))
         {
             return InputCharClass.Space;
+        }
+
+        if (guide.IsSymbolLetter(c))
+        {
+            return InputCharClass.SymbolLetter;
         }
 
         switch (c)
@@ -242,7 +301,7 @@ public class Parser
         }
     }
 
-    static (Char chr, InputCharClass cls) AugmentInputCharWithClass(Char c) => (c, GetInputCharClass(c));
+    (Char chr, InputCharClass cls) AugmentInputCharWithClass(Char c) => (c, GetInputCharClass(c));
 
     public IEnumerable<InputToken> Tokenize(IEnumerable<String> input)
     {
@@ -308,11 +367,90 @@ public class Parser
         yield return token;
     }
 
-    PrecedenceProvider precedenceProvider = new PrecedenceProvider();
+    // Parses atoms and abstractions
+    public ParsedResult ParseLetters(IEnumerator<InputToken> input, Double outerPrecedence = 0)
+    {
+        var firstToken = input.Current;
 
-    /* This parses only atoms and chains
-     */
-    public ParsedResult ParseExpression(IEnumerator<InputToken> input, ParsedResult? prefix = null, Double outerPrecedence = 0)
+        var isAbstraction = guide.IsAbstractionSymbol(firstToken.TokenSpan);
+
+        Increment(ref input);
+
+        if (isAbstraction)
+        {
+            var head = ParseExpression(
+                input,
+                outerPrecedence: Double.MinValue,
+                stopOnQuantization: guide.IsQuantizationSymbol(firstToken.TokenSpan)
+            );
+
+            if (!head)
+            {
+                Throw(firstToken, "Expected abstraction to be followed by a head");
+            }
+
+            if (input.Current.cls == InputCharClass.Colon)
+            {
+                Increment(ref input);
+            }
+
+            var body = ParseExpression(
+                input,
+                outerPrecedence: Double.MinValue
+            );
+
+            if (!body)
+            {
+                Throw(firstToken, "Expected abstraction to be followed by a body after the head");
+            }
+
+            return new ParsedQuantization { token = firstToken, head = head, body = body };
+        }
+        else
+        {
+            var result = new ParsedAtom { token = firstToken };
+
+            // Just for nicer error messages
+            //switch (input.Current.cls)
+            //{
+            //    case InputCharClass.Letter:
+            //    case InputCharClass.SymbolLetter:
+            //        Throw(input.Current, "Letter token is directly following a previous one, which is not known to be an abstraction symbol");
+            //        break;
+            //    default:
+            //        break;
+            //}
+
+            return result;
+        }
+    }
+
+    public ParsedResult ParseBracketedExpression(IEnumerator<InputToken> input)
+    {
+        var openingBracketToken = input.Current;
+
+        if (openingBracketToken.cls != InputCharClass.OpeningBracket)
+        {
+            Throw(openingBracketToken, "Expected an opening bracket");
+        }
+
+        Increment(ref input);
+
+        var inner = ParseExpression(input, outerPrecedence: Double.MinValue);
+
+        var closingBracketToken = input.Current;
+
+        if (closingBracketToken.cls != InputCharClass.ClosingBracket)
+        {
+            Throw(closingBracketToken, "Expected a closing bracket");
+        }
+
+        Increment(ref input);
+
+        return inner;
+    }
+
+    public ParsedResult ParseExpression(IEnumerator<InputToken> input, ParsedResult? prefix = null, Double outerPrecedence = 0, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
     {
         var nextToken = input.Current;
 
@@ -325,7 +463,6 @@ public class Parser
 
         Double ownPrecedence = outerPrecedence;
 
-        //InputToken currentSymbol = default;
         ParsedResult? pendingResult = null;
 
         InputToken latestOpToken = default;
@@ -345,11 +482,17 @@ public class Parser
         {
             FlushPending();
 
-            if (constituents.Count > 1 || constituents[0].op)
+            var c = constituents.Count;
+            
+            if (c == 0)
+            {
+                return ParsedResult.EmptyResult;
+            }
+            else if (c > 1 || constituents[0].op)
             {
                 return new ParsedChain { constituents = constituents };
             }
-            else if (constituents.Count == 1)
+            else if (c == 1)
             {
                 return constituents[0].item;
             }
@@ -371,24 +514,28 @@ public class Parser
                 case InputCharClass.Unsupported:
                     Throw(nextToken, "Unsupported character");
                     break;
-                case InputCharClass.Comma:
                 case InputCharClass.Semikolon:
-                case InputCharClass.Colon:
-                case InputCharClass.Dot:
                     NotYetImplemented();
                     break;
                 case InputCharClass.Letter:
+                case InputCharClass.SymbolLetter:
                     if (pendingResult is not null)
                     {
-                        // must be application or end of expression
-                        return GetResult();
+                        if (stopOnQuantization && guide.IsQuantizationSymbol(nextToken.TokenSpan))
+                        {
+                            return GetResult();
+                        }
+                        else
+                        {
+                            Throw(nextToken, "Letter token can't follow an expression");
+                        }
                     }
                     else
                     {
-                        pendingResult = new ParsedAtom { token = nextToken };
-                        Increment(ref input);
+                        pendingResult = ParseLetters(input, outerPrecedence: outerPrecedence);
                     }
                     break;
+                case InputCharClass.Comma:
                 case InputCharClass.Operator:
                     var isFirstOperator = ownPrecedence == outerPrecedence;
 
@@ -396,7 +543,7 @@ public class Parser
                     {
                         // We encoutered an operator for the first time, let's set our precedence.
 
-                        var precedence = precedenceProvider.GetPrecedence(nextToken.TokenSpan);
+                        var precedence = guide.GetPrecedence(nextToken.TokenSpan);
 
                         if (precedence == outerPrecedence)
                         {
@@ -413,7 +560,7 @@ public class Parser
                         // We already have an expression, now do we take it or is it part of
                         // a more tightly bound parent expression?
 
-                        var newPrecedence = precedenceProvider.GetPrecedence(nextToken.TokenSpan);
+                        var newPrecedence = guide.GetPrecedence(nextToken.TokenSpan);
 
                         if (newPrecedence <= outerPrecedence && !isFirstOperator)
                         {
@@ -455,7 +602,7 @@ public class Parser
                     {
                         // Two consecutive operators
 
-                        var newPrecedence = precedenceProvider.GetPrecedence(nextToken.TokenSpan);
+                        var newPrecedence = guide.GetPrecedence(nextToken.TokenSpan);
 
                         if (ownPrecedence == newPrecedence)
                         {
@@ -479,14 +626,18 @@ public class Parser
                     }
                     else
                     {
-                        Increment(ref input);
-                        pendingResult = ParseExpression(input);
+                        pendingResult = ParseBracketedExpression(input);
+
+                        if (stopAfterBracketedExpression)
+                        {
+                            return GetResult();
+                        }
                     }
                     break;
+                case InputCharClass.Colon:
+                case InputCharClass.Dot:
                 case InputCharClass.Eof:
-                    return GetResult();
                 case InputCharClass.ClosingBracket:
-                    Increment(ref input);
                     return GetResult();
                 default:
                     Throw(nextToken, $"Unknown input class {nextToken.cls}");
