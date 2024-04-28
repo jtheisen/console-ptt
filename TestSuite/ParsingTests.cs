@@ -55,6 +55,7 @@ public class ParsingTests
 
     [TestMethod]
     [DataRow("x", "x")]
+    [DataRow("x,y", "x,y")]
     [DataRow("x+y", "x+y")]
     [DataRow("x+y-z", "x+y-z")]
     [DataRow("x+y*z", "x+(y*z)")]
@@ -76,8 +77,10 @@ public class ParsingTests
     [DataRow("x+-x", null)]
     [DataRow("x + - x", null)]
 
+    [DataRow("∑ n∊N /n^x", null)]
     [DataRow("∑ n∊N: /n^x", "∑ n∊N: /(n^x)")]
     [DataRow("∀ x∊X ∃ y∊Y: x<y", "∀ x∊X: ∃ y∊Y: x<y")]
+    [DataRow("∀ x∊X,X⊆Y ∃ y∊Y: x<y", "∀ (x∊X),(X⊆Y): ∃ y∊Y: x<y")]
     //[DataRow("", "")]
     //[DataRow("", "")]
     //[DataRow("", "")]

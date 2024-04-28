@@ -227,7 +227,7 @@ public class ParserGuide
         }
     }
 
-    public Boolean IsQuantizationSymbol(ReadOnlySpan<Char> op)
+    public Boolean IsBooleanQuantizationSymbol(ReadOnlySpan<Char> op)
     {
         if (op.Length == 1)
         {
@@ -378,11 +378,7 @@ public class Parser
 
         if (isAbstraction)
         {
-            var head = ParseExpression(
-                input,
-                outerPrecedence: Double.MinValue,
-                stopOnQuantization: guide.IsQuantizationSymbol(firstToken.TokenSpan)
-            );
+            var head = ParseExpression(input, outerPrecedence: Double.MinValue);
 
             if (!head)
             {
@@ -394,10 +390,7 @@ public class Parser
                 Increment(ref input);
             }
 
-            var body = ParseExpression(
-                input,
-                outerPrecedence: Double.MinValue
-            );
+            var body = ParseExpression(input, outerPrecedence: Double.MinValue);
 
             if (!body)
             {
@@ -521,7 +514,7 @@ public class Parser
                 case InputCharClass.SymbolLetter:
                     if (pendingResult is not null)
                     {
-                        if (stopOnQuantization && guide.IsQuantizationSymbol(nextToken.TokenSpan))
+                        if (guide.IsBooleanQuantizationSymbol(nextToken.TokenSpan))
                         {
                             return GetResult();
                         }
