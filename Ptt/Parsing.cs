@@ -38,7 +38,7 @@ public struct InputToken
     public String TokenString => line[colI..endI];
     public ReadOnlySpan<Char> TokenSpan => line.AsSpan()[colI..endI];
 
-    public override String ToString() => TokenString;
+    public override String ToString() => line is not null ? line.Length == 0 ? $":empty {cls}:" : TokenString : $":{cls}:";
 
     public static implicit operator Boolean(InputToken token) => token.cls != InputCharClass.Unset;
 
@@ -47,15 +47,34 @@ public struct InputToken
 
 public static class InputCharClassExtensions
 {
-    public static Boolean IsSubstantial(this InputCharClass cls)
+    public static Boolean IsSubstantial(this InputCharClass cls, Boolean includeEof = true)
     {
         switch (cls)
         {
             case InputCharClass.Space:
             case InputCharClass.Comment:
                 return false;
+            case InputCharClass.Eof:
+                return includeEof;
             default:
                 return true;
+        }
+    }
+
+    public static Boolean IsSingleCharacter(this InputCharClass cls)
+    {
+        switch (cls)
+        {
+            case InputCharClass.Comma:
+            case InputCharClass.Semikolon:
+            case InputCharClass.Colon:
+            case InputCharClass.Dot:
+            case InputCharClass.Operator:
+            case InputCharClass.OpeningBracket:
+            case InputCharClass.ClosingBracket:
+                return true;
+            default:
+                return false;
         }
     }
 }
@@ -116,7 +135,7 @@ public class ParsedAtom : ParsedResult
 public class PrecedenceProvider
 {
     static String BooleanSymbols = "⇒⇐⇔ ,∨∧ =";
-    static String DomainSymbols = "+- */";
+    static String DomainSymbols = "+- */ ^";
     static String RelationSymbols = "<>≤≥ ⊂⊃ ⊆⊇ ∊∍ ∈∋ ϵ";
 
     static Dictionary<Char, Double> precedences;
@@ -261,13 +280,13 @@ public class Parser
 
             token.cls = current.cls;
 
-            var i = 0;
+            var i = 1;
 
             while (i < n)
             {
                 var next = AugmentInputCharWithClass(token.line[i]);
 
-                if (next.cls != current.cls)
+                if (next.cls != current.cls || current.cls.IsSingleCharacter())
                 {
                     token.endI = i;
                     yield return token;
@@ -383,15 +402,11 @@ public class Parser
                         {
                             Throw(nextToken, "First operator has same precedence as the outer context");
                         }
-                        else if (precedence < outerPrecedence)
-                        {
-                            Throw(nextToken, "First operator has even lower precedence than the outer context");
-                        }
 
                         ownPrecedence = precedence;
                     }
 
-                    // Now we have always ownPrecedence > outerPrecedence
+                    // Now we have always ownPrecedence != outerPrecedence
 
                     if (pendingResult is not null)
                     {
@@ -400,7 +415,14 @@ public class Parser
 
                         var newPrecedence = precedenceProvider.GetPrecedence(nextToken.TokenSpan);
 
-                        if (newPrecedence > ownPrecedence)
+                        if (newPrecedence <= outerPrecedence && !isFirstOperator)
+                        {
+                            // The new operator belongs to an outer context, except if it's the first. If
+                            // it's the first, we a consecutive operator and treat it like any other.
+
+                            return GetResult();
+                        }
+                        else if (newPrecedence > ownPrecedence)
                         {
                             // A new operator binds even tighter. The alreay parsed result is to be
                             // consumed by the recursive call.
@@ -417,7 +439,7 @@ public class Parser
 
                             Increment(ref input);
                         }
-                        else if (newPrecedence > outerPrecedence)
+                        else
                         {
                             // A precedence lower that ownPrecedence, but higher than outerPrecdence.
                             // We pass the current result into a recursive call for the rest.
@@ -427,12 +449,6 @@ public class Parser
                             var currentResult = GetResult();
 
                             return ParseExpression(input, prefix: currentResult, outerPrecedence: outerPrecedence);
-                        }
-                        else
-                        {
-                            // An operator of the outer context. This expression is complete.
-
-                            return GetResult();
                         }
                     }
                     else if (latestOpToken)
@@ -447,9 +463,7 @@ public class Parser
                         }
                         else
                         {
-                            var nested = ParseExpression(input, outerPrecedence: ownPrecedence);
-                            constituents.Add((nested, latestOpToken));
-                            latestOpToken.Clear();
+                            pendingResult = ParseExpression(input, outerPrecedence: ownPrecedence);
                         }
                     }
                     else
@@ -466,9 +480,7 @@ public class Parser
                     else
                     {
                         Increment(ref input);
-                        var nested = ParseExpression(input);
-                        constituents.Add((nested, latestOpToken));
-                        latestOpToken.Clear();
+                        pendingResult = ParseExpression(input);
                     }
                     break;
                 case InputCharClass.Eof:

@@ -8,6 +8,8 @@ public class ParsingTests
     [TestMethod]
     [DataRow("", "")]
     [DataRow("x", "x")]
+    [DataRow("x*y", "x|*|y")]
+    [DataRow("foo**bar", "foo|*|*|bar")]
     [DataRow("∃A set", "∃|A|set")]
     [DataRow("∃ A set", "∃|A|set")]
     [DataRow("(x+bar*z<foo)", "(|x|+|bar|*|z|<|foo|)")]
@@ -17,7 +19,7 @@ public class ParsingTests
         bar
         """,
         "foo|bar")]
-    public void TestTokenization(String input, String expectedEncoded)
+    public void TestTokenization(String input, String expected)
     {
         var parser = new Parser();
 
@@ -37,15 +39,18 @@ public class ParsingTests
             }
         }
 
-        var actual = parser
+        var actualTokens = parser
             .Tokenize(lines)
-            .Where(t => t.cls != InputCharClass.Space && t.cls != InputCharClass.Comment)
-            .Select(t => t.TokenString)
+            .Where(t => t.cls.IsSubstantial(includeEof: false))
             .ToArray();
 
-        var expected = expectedEncoded.Length > 0 ? expectedEncoded.Split('|') : [];
+        var actualParts = actualTokens
+            .Select(t => t.ToString())
+            .ToArray();
 
-        CollectionAssert.AreEqual(expected, actual);
+        var actual = String.Join("|", actualParts);
+
+        Assert.AreEqual(expected, actual);
     }
 
     [TestMethod]
@@ -57,14 +62,19 @@ public class ParsingTests
     [DataRow("-x", "-x")]
     [DataRow("-x/y", "-(x/y)")]
     [DataRow("/x-y", "(/x)-y")]
-    [DataRow("x - /y", "x-(/y)")]
-    [DataRow("x / -y", "x/(-y)")]
-    [DataRow("x - /y*z", "x-(/y*z)")]
-    [DataRow("x / -y+z", "(x/(-y))+z")]
-    [DataRow("x / -y^a+z", "(x/(-(y^a)))+z")]
-    [DataRow("- - x", null)]
+    [DataRow("x-/y", "x-(/y)")]
+    [DataRow("x/-y", "x/(-y)")]
+    [DataRow("x-/y*z", "x-(/y*z)")]
+    [DataRow("x/-y+z", "(x/(-y))+z")]
+    [DataRow("x^-y*z", "(x^(-y))*z")]
+    [DataRow("x/-y^a+z", "(x/(-(y^a)))+z")]
+    [DataRow("x^/-y", "x^(/(-y))")]
+    [DataRow("--x", null)]
+    [DataRow("x--x", null)]
     [DataRow("x - - x", null)]
-    [DataRow("x - - x", null)]
+    [DataRow("+-x", null)]
+    [DataRow("x+-x", null)]
+    [DataRow("x + - x", null)]
     public void TestExpressionParsing(String input, String? expectedEncoded)
     {
         var parser = new Parser();
