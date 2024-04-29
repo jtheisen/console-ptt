@@ -9,6 +9,7 @@ public class ParsingTests
     [DataRow("", "")]
     [DataRow("x", "x")]
     [DataRow("x*y", "x|*|y")]
+    [DataRow("((", "(|(")]
     [DataRow("foo**bar", "foo|*|*|bar")]
     [DataRow("∃A set", "∃|A|set")]
     [DataRow("∃ A set", "∃|A|set")]
@@ -55,6 +56,8 @@ public class ParsingTests
 
     [TestMethod]
     [DataRow("x", "x")]
+    [DataRow("(x)", "x")]
+    [DataRow("((x))", "x")]
     [DataRow("x,y", "x,y")]
     [DataRow("x+y", "x+y")]
     [DataRow("x+y-z", "x+y-z")]
