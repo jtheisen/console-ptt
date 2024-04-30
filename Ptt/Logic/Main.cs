@@ -1,4 +1,6 @@
-﻿namespace Ptt;
+﻿using System.Text;
+
+namespace Ptt;
 
 public class Symbol
 {
@@ -58,11 +60,11 @@ public class ContextBuilder
         }
     }
 
-    Symbol AddSymbol(SyntaxAtom atom)
+    Symbol AddSymbol(SyntaxAtom atom, Int32 quantizationDepth)
     {
         var name = atom.token.TokenString;
 
-        var symbol = new Symbol { Id = name, Name = name };
+        var symbol = new Symbol { Id = $"x{quantizationDepth}", Name = name };
 
         if (symbols.TryAdd(name, symbol))
         {
@@ -84,7 +86,9 @@ public class ContextBuilder
 
     AtomTerm Create(SyntaxAtom atom)
     {
-        return new AtomTerm { Id = atom.token.TokenString, Symbol = GetSymbol(atom) };
+        var symbol = GetSymbol(atom);
+
+        return new AtomTerm { Id = symbol.Id, Symbol = symbol };
     }
 
     ChainTerm Create(SyntaxChain chain)
@@ -138,8 +142,17 @@ public class ContextBuilder
             item.op = op;
         }
 
-        // FIXME: id
-        return new ChainTerm { Id = "", Items = items };
+        var sb = new StringBuilder();
+        sb.Append('(');
+        foreach (var item in items)
+        {
+            sb.Append(item.op.Name);
+            sb.Append(item.term.Id);
+        }
+        sb.Append(')');
+        var id = sb.ToString();
+
+        return new ChainTerm { Id = id, Items = items };
     }
 
     QuantizationTerm Create(SyntaxQuantization quantization)
@@ -182,7 +195,7 @@ public class ContextBuilder
             
             if (syntaxTerm.constituents[0].item is SyntaxAtom atom)
             {
-                var symbol = AddSymbol(atom);
+                var symbol = AddSymbol(atom, quantization.body.quantizationDepth);
 
                 try
                 {
@@ -190,7 +203,7 @@ public class ContextBuilder
 
                     var body = CreateGeneral(quantization.body);
 
-                    var id = $"{quantization.token.TokenString}{head.Id}:{body.Id}";
+                    var id = $"({quantization.token.TokenString} {head.Id}:{body.Id})";
 
                     return new QuantizationTerm { Id = id, Symbol = symbol, Head = head, Body = body };
                 }

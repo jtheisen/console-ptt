@@ -102,6 +102,8 @@ public abstract class SyntaxNode
 
     public abstract InputToken GetRepresentativeToken();
 
+    public required Int32 quantizationDepth;
+
     public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
 }
 

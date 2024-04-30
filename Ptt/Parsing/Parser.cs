@@ -177,11 +177,20 @@ public class Parser
                 Increment(ref input);
             }
 
-            return new SyntaxQuantization { token = firstToken, precedence = isBraceExpression ? Double.NaN : ownPrecedence, head = head, body = body };
+            var newPrecedence = isBraceExpression ? Double.NaN : ownPrecedence;
+
+            return new SyntaxQuantization
+            {
+                token = firstToken,
+                precedence = newPrecedence,
+                head = head,
+                body = body,
+                quantizationDepth = body.quantizationDepth + 1
+            };
         }
         else
         {
-            var result = new SyntaxAtom { token = firstToken };
+            var result = new SyntaxAtom { token = firstToken, quantizationDepth = 0 };
 
             return result;
         }
@@ -248,11 +257,18 @@ public class Parser
             
             if (c == 0)
             {
-                return new SyntaxEmpty { token = nextToken };
+                return new SyntaxEmpty { token = nextToken, quantizationDepth = 0 };
             }
             else if (c > 1 || constituents[0].op)
             {
-                return new SyntaxChain { constituents = constituents, precedence = ownPrecedence };
+                var quantizationDepth = constituents.Max(i => i.item.quantizationDepth);
+
+                return new SyntaxChain
+                {
+                    constituents = constituents,
+                    precedence = ownPrecedence,
+                    quantizationDepth = quantizationDepth
+                };
             }
             else if (c == 1)
             {
