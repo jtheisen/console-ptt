@@ -4,7 +4,7 @@ namespace Ptt;
 
 public class Parser
 {
-    ParserGuide guide = new ParserGuide();
+    TestContext guide = new TestContext();
 
     InputCharClass GetInputCharClass(Char c)
     {
@@ -144,11 +144,6 @@ public class Parser
 
         if (isQuantization || isBraceExpression)
         {
-            if (isBraceExpression)
-            {
-                ownPrecedence = Double.MinValue;
-            }
-
             var head = ParseExpression(input, outerPrecedence: Double.MinValue);
 
             if (!head)
@@ -165,7 +160,7 @@ public class Parser
                 Throw(firstToken, "Expected a colon to terminate the head of quantization");
             }
 
-            var body = ParseExpression(input, outerPrecedence: ownPrecedence);
+            var body = ParseExpression(input, outerPrecedence: isBraceExpression ? Double.MinValue : ownPrecedence);
 
             if (!body)
             {
@@ -182,7 +177,7 @@ public class Parser
                 Increment(ref input);
             }
 
-            return new ParsedQuantization { token = firstToken, head = head, body = body };
+            return new ParsedQuantization { token = firstToken, precedence = isBraceExpression ? Double.NaN : ownPrecedence, head = head, body = body };
         }
         else
         {
@@ -253,11 +248,11 @@ public class Parser
             
             if (c == 0)
             {
-                return ParsedResult.EmptyResult;
+                return new ParsedEmptyResult { token = nextToken };
             }
             else if (c > 1 || constituents[0].op)
             {
-                return new ParsedChain { constituents = constituents };
+                return new ParsedChain { constituents = constituents, precedence = ownPrecedence };
             }
             else if (c == 1)
             {
@@ -434,9 +429,6 @@ public class Parser
 
     void Throw(InputToken token, String message)
     {
-        var prefix = token.line[..token.colI];
-        var suffix = token.line[token.endI..];
-
-        throw new ParsingException($"{message} at {token.lineI}:{token.colI}, line: '{prefix}⋮{token.TokenString}⋮{suffix}'");
+        throw new ParsingException(token.GetContextMessage(message));
     }
 }

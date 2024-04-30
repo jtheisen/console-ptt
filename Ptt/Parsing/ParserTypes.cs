@@ -43,6 +43,14 @@ public struct InputToken
     public static implicit operator Boolean(InputToken token) => token.cls != InputCharClass.Unset;
 
     public void Clear() => cls = InputCharClass.Unset;
+
+    public String GetContextMessage(String message)
+    {
+        var prefix = line[..colI];
+        var suffix = line[endI..];
+
+        throw new ParsingException($"{message} at {lineI}:{colI}, line: '{prefix}⋮{TokenString}⋮{suffix}'");
+    }
 }
 
 public static class InputCharClassExtensions
@@ -88,18 +96,29 @@ public class ParsingException : Exception
     }
 }
 
-public class ParsedResult
+public abstract class ParsedResult
 {
-    public static ParsedResult EmptyResult = new ParsedResult();
+    public abstract Boolean IsEmpty { get; }
 
-    public virtual Boolean IsEmpty => true;
+    public abstract InputToken GetRepresentativeToken();
 
     public static implicit operator Boolean(ParsedResult self) => !self.IsEmpty;
+}
+
+public class ParsedEmptyResult : ParsedResult
+{
+    public required InputToken token;
+
+    public override Boolean IsEmpty => true;
+
+    public override InputToken GetRepresentativeToken() => token;
 }
 
 public class ParsedChain : ParsedResult
 {
     public required List<(ParsedResult item, InputToken op)> constituents;
+
+    public required Double precedence;
 
     public override Boolean IsEmpty => constituents.Count == 0;
 
@@ -128,6 +147,8 @@ public class ParsedChain : ParsedResult
         }
         return sb.ToString();
     }
+
+    public override InputToken GetRepresentativeToken() => constituents[0].op;
 }
 
 public class ParsedAtom : ParsedResult
@@ -137,11 +158,15 @@ public class ParsedAtom : ParsedResult
     public override Boolean IsEmpty => false;
 
     public override String ToString() => token.ToString();
+
+    public override InputToken GetRepresentativeToken() => token;
 }
 
 public class ParsedQuantization : ParsedResult
 {
     public required InputToken token;
+
+    public required Double precedence;
 
     public required ParsedResult head;
     public required ParsedResult body;
@@ -161,4 +186,6 @@ public class ParsedQuantization : ParsedResult
             return $"{token} {head}: {body}";
         }
     }
+
+    public override InputToken GetRepresentativeToken() => token;
 }

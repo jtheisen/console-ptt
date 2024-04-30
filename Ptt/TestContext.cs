@@ -1,6 +1,60 @@
-﻿namespace Ptt;
+﻿using System.Diagnostics.CodeAnalysis;
 
-public class ParserGuide
+namespace Ptt;
+
+public interface IParserGuide
+{
+    Double GetPrecedence(ReadOnlySpan<Char> op);
+    Boolean IsSymbolLetter(Char c, out Double precedence);
+    Boolean IsQuantizationSymbol(ReadOnlySpan<Char> op, out Double precedence);
+    Boolean IsBooleanQuantizationSymbol(ReadOnlySpan<Char> op);
+}
+
+public class Groupoid
+{
+    public Operator DefaultOp { get; }
+
+    public Operator? NegatedOp { get; }
+
+    public required Boolean IsAssociative { get; init; }
+
+    public required Boolean IsUnordered { get; init; }
+
+    public Double Precedence { get; set; }
+
+    public IEnumerable<Operator> GetOperators()
+    {
+        yield return DefaultOp;
+        if (NegatedOp is not null)
+        {
+            yield return NegatedOp;
+        }
+    }
+
+    public Groupoid(String defaultOp, String? negatedOp = null)
+    {
+        DefaultOp = new Operator { Groupoid = this, Name = defaultOp };
+
+        if (negatedOp is not null)
+        {
+            NegatedOp = new Operator { Groupoid = this, Name = negatedOp };
+        }
+    }
+}
+
+public class Operator
+{
+    public required String Name { get; init; }
+
+    public required Groupoid Groupoid { get; init; }
+}
+
+public interface IContext
+{
+    Boolean TryGetOperator(String name, [NotNullWhen(true)] out Operator? op);
+}
+
+public class TestContext : IParserGuide, IContext
 {
     static String BooleanSymbols = "⇒⇐⇔ ,∨∧ =";
     static String DomainSymbols = "+- */ ^";
@@ -13,9 +67,11 @@ public class ParserGuide
     static String SymbolLetterPrecedencePairings =
         "∨∨+*";
 
-    static Dictionary<Char, Double> precedences;
+    Dictionary<Char, Double> precedences;
 
-    static ParserGuide()
+    Dictionary<String, Operator> operators;
+
+    public TestContext()
     {
         precedences = new Dictionary<Char, Double>();
 
@@ -42,6 +98,11 @@ public class ParserGuide
                 }
             }
         }
+
+        operators = new Dictionary<String, Operator>();
+
+        AddGroupoid(new Groupoid("*", "/") { IsAssociative = true, IsUnordered = true });
+        AddGroupoid(new Groupoid("+", "-") { IsAssociative = true, IsUnordered = true });
     }
 
     Double? GetPrecedenceForOperatorCharacter(Char chr)
@@ -129,5 +190,36 @@ public class ParserGuide
         {
             return false;
         }
+    }
+
+    // End of methods for parsing
+
+    void AddGroupoid(Groupoid groupoid)
+    {
+        Double? precedence = null;
+
+        foreach (var op in groupoid.GetOperators())
+        {
+            var p = GetPrecedence(op.Name.AsSpan());
+
+            if (precedence is Double existingPrecedence)
+            {
+                if (existingPrecedence != p)
+                {
+                    throw new Exception("Different precedences for groupoid operators");
+                }
+            }
+            else
+            {
+                precedence = groupoid.Precedence = p;
+            }
+
+            operators[op.Name] = op;
+        }
+    }
+
+    public Boolean TryGetOperator(String name, [NotNullWhen(true)] out Operator? op)
+    {
+        return operators.TryGetValue(name, out op);
     }
 }
