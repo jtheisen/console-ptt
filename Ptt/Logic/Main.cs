@@ -9,20 +9,101 @@ public class Symbol
     public required String Id { get; init; }
 }
 
-public class Term : IEquatable<Term>
+public abstract class Term : IEquatable<Term>
 {
-    public required String Id { get; init; }
+    String? id;
+
+    public String Id
+    {
+        get
+        {
+            if (id is null)
+            {
+                var writer = new SmartStringWriter();
+                Render(writer, useIds: true);
+                id = writer.GetResult();
+            }
+            return id;
+        }
+    }
+
+    Int32? estimatedRenderLength;
+
+    public Int32 EstimatedRenderLength
+    {
+        get
+        {
+            if (estimatedRenderLength is null)
+            {
+                estimatedRenderLength = EstimateRenderLength();
+            }
+
+            return estimatedRenderLength.Value;
+        }
+    }
 
     public Boolean Equals(Term? other) => Id == other?.Id;
 
     public override Int32 GetHashCode() => Id.GetHashCode();
 
     public override Boolean Equals(Object? obj) => Equals(obj as Term);
+
+    public override String ToString()
+    {
+        var writer = new SmartStringWriter();
+        Write(writer, useIds: false);
+        return writer.GetResult();
+    }
+
+    public void Write(SmartStringWriter writer, Boolean useIds)
+    {
+        if (useIds)
+        {
+            writer.Write(Id);
+        }
+        else
+        {
+            Render(writer, useIds);
+        }
+    }
+
+    protected abstract Int32 EstimateRenderLength();
+
+    protected abstract void Render(SmartStringWriter writer, Boolean useIds);
 }
 
 public class ChainTerm : Term
 {
-    public required (Term, Operator)[] Items { get; init; }
+    public required Groupoid Groupoid { get; init; }
+
+    public required (Term term, Operator op)[] Items { get; init; }
+
+    protected override Int32 EstimateRenderLength()
+    {
+        return Items.Sum(i => i.term.EstimatedRenderLength + i.op.Name.Length + 2);
+    }
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        var n = Items.Length;
+
+        var ownPrecendence = Groupoid.Precedence;
+
+        for (var i = 0; i < n; i++)
+        {
+            var (term, op) = Items[i];
+
+            var needParens = ownPrecendence >= op.Groupoid.Precedence;
+
+            writer.Break(relativeNesting: -op.Name.Length);
+            if (needParens) writer.Write("(");
+            writer.Open(term.EstimatedRenderLength);
+            writer.Write(op.Name);
+            term.Write(writer, useIds);
+            writer.Close();
+            if (needParens) writer.Write(")");
+        }
+    }
 }
 
 public class QuantizationTerm : Term
@@ -32,11 +113,37 @@ public class QuantizationTerm : Term
     public required Term Head { get; init; }
 
     public required Term Body { get; init; }
+
+    protected override Int32 EstimateRenderLength() => Symbol.Name.Length + Head.EstimatedRenderLength + Body.EstimatedRenderLength + 2;
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        writer.Write(useIds ? Symbol.Id : Symbol.Name);
+
+        writer.WriteSpace();
+
+        writer.Open(Head.EstimatedRenderLength);
+        Head.Write(writer, useIds);
+        writer.Close();
+
+        writer.Write(":");
+
+        writer.Open(Body.EstimatedRenderLength);
+        Body.Write(writer, useIds);
+        writer.Close();
+    }
 }
 
 public class AtomTerm : Term
 {
     public required Symbol Symbol { get; init; }
+
+    protected override Int32 EstimateRenderLength() => Symbol.Name.Length;
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        writer.Write(useIds ? Symbol.Id : Symbol.Name);
+    }
 }
 
 
@@ -88,7 +195,7 @@ public class ContextBuilder
     {
         var symbol = GetSymbol(atom);
 
-        return new AtomTerm { Id = symbol.Id, Symbol = symbol };
+        return new AtomTerm { Symbol = symbol };
     }
 
     ChainTerm Create(SyntaxChain chain)
@@ -104,6 +211,7 @@ public class ContextBuilder
 
         var items = new (Term term, Operator op)[n];
 
+        Groupoid? groupoid = null;
         Operator? defaultOp = null;
 
         for (var i = n - 1; i >= 0; --i)
@@ -123,9 +231,10 @@ public class ContextBuilder
                 {
                     throw Error(opName, $"Can't resolve operator '{opName.TokenString}'");
                 }
-                else
+                else if (defaultOp is null)
                 {
-                    defaultOp = op.Groupoid.DefaultOp;
+                    groupoid = op.Groupoid;
+                    defaultOp = groupoid.DefaultOp;
                 }
             }
             else
@@ -142,17 +251,12 @@ public class ContextBuilder
             item.op = op;
         }
 
-        var sb = new StringBuilder();
-        sb.Append('(');
-        foreach (var item in items)
+        if (groupoid is null)
         {
-            sb.Append(item.op.Name);
-            sb.Append(item.term.Id);
+            throw new Exception("Assertion failure: Expected to have a groupoid by now");
         }
-        sb.Append(')');
-        var id = sb.ToString();
 
-        return new ChainTerm { Id = id, Items = items };
+        return new ChainTerm { Items = items, Groupoid = groupoid };
     }
 
     QuantizationTerm Create(SyntaxQuantization quantization)
@@ -203,9 +307,7 @@ public class ContextBuilder
 
                     var body = CreateGeneral(quantization.body);
 
-                    var id = $"({quantization.token.TokenString} {head.Id}:{body.Id})";
-
-                    return new QuantizationTerm { Id = id, Symbol = symbol, Head = head, Body = body };
+                    return new QuantizationTerm { Symbol = symbol, Head = head, Body = body };
                 }
                 finally
                 {
