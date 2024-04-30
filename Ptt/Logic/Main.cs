@@ -18,12 +18,12 @@ public class Term : IEquatable<Term>
     public override Boolean Equals(Object? obj) => Equals(obj as Term);
 }
 
-public class Chain : Term
+public class ChainTerm : Term
 {
     public required (Term, Operator)[] Items { get; init; }
 }
 
-public class Quantization : Term
+public class QuantizationTerm : Term
 {
     public required Symbol Symbol { get; init; }
 
@@ -32,7 +32,7 @@ public class Quantization : Term
     public required Term Body { get; init; }
 }
 
-public class Atom : Term
+public class AtomTerm : Term
 {
     public required Symbol Symbol { get; init; }
 }
@@ -44,7 +44,7 @@ public class ContextBuilder
 
     Dictionary<String, Symbol> symbols = new Dictionary<String, Symbol>();
 
-    Symbol GetSymbol(ParsedAtom atom)
+    Symbol GetSymbol(SyntaxAtom atom)
     {
         var name = atom.token.TokenString;
 
@@ -58,7 +58,7 @@ public class ContextBuilder
         }
     }
 
-    Symbol AddSymbol(ParsedAtom atom)
+    Symbol AddSymbol(SyntaxAtom atom)
     {
         var name = atom.token.TokenString;
 
@@ -82,12 +82,12 @@ public class ContextBuilder
         }
     }
 
-    Atom Create(ParsedAtom atom)
+    AtomTerm Create(SyntaxAtom atom)
     {
-        return new Atom { Id = atom.token.TokenString, Symbol = GetSymbol(atom) };
+        return new AtomTerm { Id = atom.token.TokenString, Symbol = GetSymbol(atom) };
     }
 
-    Chain Create(ParsedChain chain)
+    ChainTerm Create(SyntaxChain chain)
     {
         var constituents = chain.constituents;
 
@@ -139,12 +139,12 @@ public class ContextBuilder
         }
 
         // FIXME: id
-        return new Chain { Id = "", Items = items };
+        return new ChainTerm { Id = "", Items = items };
     }
 
-    Quantization Create(ParsedQuantization quantization)
+    QuantizationTerm Create(SyntaxQuantization quantization)
     {
-        if (quantization.head is ParsedChain syntaxTerm)
+        if (quantization.head is SyntaxChain syntaxTerm)
         {
             var syntaxHead = syntaxTerm;
 
@@ -161,7 +161,7 @@ public class ContextBuilder
 
                 var firstConstituent = syntaxTerm.constituents[0];
 
-                if (firstConstituent.item is ParsedChain innerRelationship)
+                if (firstConstituent.item is SyntaxChain innerRelationship)
                 {
                     syntaxTerm = innerRelationship;
                 }
@@ -180,7 +180,7 @@ public class ContextBuilder
                 throw Error(syntaxTerm.constituents[0].op, "Term must be a simple relation");
             }
             
-            if (syntaxTerm.constituents[0].item is ParsedAtom atom)
+            if (syntaxTerm.constituents[0].item is SyntaxAtom atom)
             {
                 var symbol = AddSymbol(atom);
 
@@ -192,7 +192,7 @@ public class ContextBuilder
 
                     var id = $"{quantization.token.TokenString}{head.Id}:{body.Id}";
 
-                    return new Quantization { Id = id, Symbol = symbol, Head = head, Body = body };
+                    return new QuantizationTerm { Id = id, Symbol = symbol, Head = head, Body = body };
                 }
                 finally
                 {
@@ -213,11 +213,11 @@ public class ContextBuilder
         throw new Exception();
     }
 
-    Term CreateGeneral(ParsedResult source) => source switch
+    Term CreateGeneral(SyntaxNode source) => source switch
     {
-        ParsedAtom atom => Create(atom),
-        ParsedQuantization quantization => Create(quantization),
-        ParsedChain chain => Create(chain),
+        SyntaxAtom atom => Create(atom),
+        SyntaxQuantization quantization => Create(quantization),
+        SyntaxChain chain => Create(chain),
         _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
     };
 

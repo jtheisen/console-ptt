@@ -132,7 +132,7 @@ public class Parser
     }
 
     // Parses atoms, quantizations and brace expressions
-    public ParsedResult ParseLetters(IEnumerator<InputToken> input)
+    public SyntaxNode ParseLetters(IEnumerator<InputToken> input)
     {
         var firstToken = input.Current;
 
@@ -177,17 +177,17 @@ public class Parser
                 Increment(ref input);
             }
 
-            return new ParsedQuantization { token = firstToken, precedence = isBraceExpression ? Double.NaN : ownPrecedence, head = head, body = body };
+            return new SyntaxQuantization { token = firstToken, precedence = isBraceExpression ? Double.NaN : ownPrecedence, head = head, body = body };
         }
         else
         {
-            var result = new ParsedAtom { token = firstToken };
+            var result = new SyntaxAtom { token = firstToken };
 
             return result;
         }
     }
 
-    public ParsedResult ParseBracketedExpression(IEnumerator<InputToken> input)
+    public SyntaxNode ParseBracketedExpression(IEnumerator<InputToken> input)
     {
         var openingBracketToken = input.Current;
 
@@ -212,11 +212,11 @@ public class Parser
         return inner;
     }
 
-    public ParsedResult ParseExpression(IEnumerator<InputToken> input, ParsedResult? prefix = null, Double outerPrecedence = 0, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
+    public SyntaxNode ParseExpression(IEnumerator<InputToken> input, SyntaxNode? prefix = null, Double outerPrecedence = 0, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
     {
         var nextToken = input.Current;
 
-        var constituents = new List<(ParsedResult item, InputToken op)>();
+        var constituents = new List<(SyntaxNode item, InputToken op)>();
 
         if (prefix is not null)
         {
@@ -225,7 +225,7 @@ public class Parser
 
         Double ownPrecedence = outerPrecedence;
 
-        ParsedResult? pendingResult = null;
+        SyntaxNode? pendingResult = null;
 
         InputToken latestOpToken = default;
 
@@ -240,7 +240,7 @@ public class Parser
             }
         }
 
-        ParsedResult GetResult()
+        SyntaxNode GetResult()
         {
             FlushPending();
 
@@ -248,11 +248,11 @@ public class Parser
             
             if (c == 0)
             {
-                return new ParsedEmptyResult { token = nextToken };
+                return new SyntaxEmpty { token = nextToken };
             }
             else if (c > 1 || constituents[0].op)
             {
-                return new ParsedChain { constituents = constituents, precedence = ownPrecedence };
+                return new SyntaxChain { constituents = constituents, precedence = ownPrecedence };
             }
             else if (c == 1)
             {

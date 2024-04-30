@@ -96,16 +96,16 @@ public class ParsingException : Exception
     }
 }
 
-public abstract class ParsedResult
+public abstract class SyntaxNode
 {
     public abstract Boolean IsEmpty { get; }
 
     public abstract InputToken GetRepresentativeToken();
 
-    public static implicit operator Boolean(ParsedResult self) => !self.IsEmpty;
+    public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
 }
 
-public class ParsedEmptyResult : ParsedResult
+public class SyntaxEmpty : SyntaxNode
 {
     public required InputToken token;
 
@@ -114,9 +114,9 @@ public class ParsedEmptyResult : ParsedResult
     public override InputToken GetRepresentativeToken() => token;
 }
 
-public class ParsedChain : ParsedResult
+public class SyntaxChain : SyntaxNode
 {
-    public required List<(ParsedResult item, InputToken op)> constituents;
+    public required List<(SyntaxNode item, InputToken op)> constituents;
 
     public required Double precedence;
 
@@ -134,7 +134,7 @@ public class ParsedChain : ParsedResult
                 sb.Append(op.TokenSpan);
             }
 
-            if (item is ParsedAtom atom)
+            if (item is SyntaxAtom atom)
             {
                 sb.Append(atom.token.TokenSpan);
             }
@@ -151,7 +151,7 @@ public class ParsedChain : ParsedResult
     public override InputToken GetRepresentativeToken() => constituents[0].op;
 }
 
-public class ParsedAtom : ParsedResult
+public class SyntaxAtom : SyntaxNode
 {
     public required InputToken token;
 
@@ -162,14 +162,14 @@ public class ParsedAtom : ParsedResult
     public override InputToken GetRepresentativeToken() => token;
 }
 
-public class ParsedQuantization : ParsedResult
+public class SyntaxQuantization : SyntaxNode
 {
     public required InputToken token;
 
     public required Double precedence;
 
-    public required ParsedResult head;
-    public required ParsedResult body;
+    public required SyntaxNode head;
+    public required SyntaxNode body;
 
     public Boolean IsBraceExpression => token.cls == InputCharClass.OpeningBrace;
 
