@@ -74,7 +74,7 @@ public abstract class Term : IEquatable<Term>
 
 public class ChainTerm : Term
 {
-    public required Groupoid Groupoid { get; init; }
+    public required Magma Magma { get; init; }
 
     public required (Term term, Operator op)[] Items { get; init; }
 
@@ -87,13 +87,13 @@ public class ChainTerm : Term
     {
         var n = Items.Length;
 
-        var ownPrecendence = Groupoid.Precedence;
+        var ownPrecendence = Magma.Precedence;
 
         for (var i = 0; i < n; i++)
         {
             var (term, op) = Items[i];
 
-            var needParens = ownPrecendence >= op.Groupoid.Precedence;
+            var needParens = ownPrecendence >= op.Magma.Precedence;
 
             writer.Break(relativeNesting: -op.Name.Length);
             if (needParens) writer.Write("(");
@@ -211,7 +211,7 @@ public class ContextBuilder
 
         var items = new (Term term, Operator op)[n];
 
-        Groupoid? groupoid = null;
+        Magma? magma = null;
         Operator? defaultOp = null;
 
         for (var i = n - 1; i >= 0; --i)
@@ -233,8 +233,8 @@ public class ContextBuilder
                 }
                 else if (defaultOp is null)
                 {
-                    groupoid = op.Groupoid;
-                    defaultOp = groupoid.DefaultOp;
+                    magma = op.Magma;
+                    defaultOp = magma.DefaultOp;
                 }
             }
             else
@@ -251,12 +251,12 @@ public class ContextBuilder
             item.op = op;
         }
 
-        if (groupoid is null)
+        if (magma is null)
         {
-            throw new Exception("Assertion failure: Expected to have a groupoid by now");
+            throw new Exception("Assertion failure: Expected to have a magma by now");
         }
 
-        return new ChainTerm { Items = items, Groupoid = groupoid };
+        return new ChainTerm { Items = items, Magma = magma };
     }
 
     QuantizationTerm Create(SyntaxQuantization quantization)

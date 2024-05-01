@@ -10,7 +10,7 @@ public interface IParserGuide
     Boolean IsBooleanQuantizationSymbol(ReadOnlySpan<Char> op);
 }
 
-public class Groupoid
+public class Magma
 {
     public Operator DefaultOp { get; }
 
@@ -31,13 +31,13 @@ public class Groupoid
         }
     }
 
-    public Groupoid(String defaultOp, String? negatedOp = null)
+    public Magma(String defaultOp, String? negatedOp = null)
     {
-        DefaultOp = new Operator { Groupoid = this, Name = defaultOp };
+        DefaultOp = new Operator { Magma = this, Name = defaultOp };
 
         if (negatedOp is not null)
         {
-            NegatedOp = new Operator { Groupoid = this, Name = negatedOp };
+            NegatedOp = new Operator { Magma = this, Name = negatedOp };
         }
     }
 }
@@ -46,7 +46,7 @@ public class Operator
 {
     public required String Name { get; init; }
 
-    public required Groupoid Groupoid { get; init; }
+    public required Magma Magma { get; init; }
 }
 
 public interface IContext
@@ -101,8 +101,8 @@ public class TestContext : IParserGuide, IContext
 
         operators = new Dictionary<String, Operator>();
 
-        AddGroupoid(new Groupoid("*", "/") { IsAssociative = true, IsUnordered = true });
-        AddGroupoid(new Groupoid("+", "-") { IsAssociative = true, IsUnordered = true });
+        AddMagma(new Magma("*", "/") { IsAssociative = true, IsUnordered = true });
+        AddMagma(new Magma("+", "-") { IsAssociative = true, IsUnordered = true });
     }
 
     Double? GetPrecedenceForOperatorCharacter(Char chr)
@@ -194,11 +194,11 @@ public class TestContext : IParserGuide, IContext
 
     // End of methods for parsing
 
-    void AddGroupoid(Groupoid groupoid)
+    void AddMagma(Magma magma)
     {
         Double? precedence = null;
 
-        foreach (var op in groupoid.GetOperators())
+        foreach (var op in magma.GetOperators())
         {
             var p = GetPrecedence(op.Name.AsSpan());
 
@@ -206,12 +206,12 @@ public class TestContext : IParserGuide, IContext
             {
                 if (existingPrecedence != p)
                 {
-                    throw new Exception("Different precedences for groupoid operators");
+                    throw new Exception("Different precedences for magma operators");
                 }
             }
             else
             {
-                precedence = groupoid.Precedence = p;
+                precedence = magma.Precedence = p;
             }
 
             operators[op.Name] = op;
