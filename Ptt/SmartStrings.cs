@@ -78,6 +78,11 @@ public class SmartStringWriter : AbstractSmartStringWriter
     Boolean isSpacePending;
     Boolean isBreakPending;
 
+    public SmartStringWriter()
+    {
+        stack.Push(false);
+    }
+
     void WritePending()
     {
         if (isBreakPending)
@@ -130,7 +135,7 @@ public class SmartStringWriter : AbstractSmartStringWriter
 
     public String GetResult()
     {
-        if (stack.Count != 0)
+        if (stack.Count != 1)
         {
             throw new Exception("Assertion failure: stack was not empty");
         }

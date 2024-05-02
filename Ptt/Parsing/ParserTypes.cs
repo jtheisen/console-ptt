@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Text;
 
 namespace Ptt;
 
@@ -27,6 +28,7 @@ public enum InputCharClass
     ClosingBracket
 }
 
+[DebuggerDisplay("{DebugString}")]
 public struct InputToken
 {
     public InputCharClass cls;
@@ -38,11 +40,15 @@ public struct InputToken
     public String TokenString => line[colI..endI];
     public ReadOnlySpan<Char> TokenSpan => line.AsSpan()[colI..endI];
 
-    public override String ToString() => line is not null ? line.Length == 0 ? $":empty {cls}:" : TokenString : $":{cls}:";
+    public String DebugString => line is not null ? line.Length == 0 ? $":empty {cls}:" : TokenString : $":{cls}:";
+
+    public override String ToString() => DebugString;
 
     public static implicit operator Boolean(InputToken token) => token.cls != InputCharClass.Unset;
 
     public void Clear() => cls = InputCharClass.Unset;
+
+    public static implicit operator String(InputToken token) => token.TokenString;
 
     public String GetContextMessage(String message)
     {
@@ -96,6 +102,13 @@ public class ParsingException : Exception
     }
 }
 
+[Flags]
+public enum SyntaxNodeStringificationFlags
+{
+    None = 0,
+    ParenBodies = 1
+}
+
 public abstract class SyntaxNode
 {
     public abstract Boolean IsEmpty { get; }
@@ -105,6 +118,10 @@ public abstract class SyntaxNode
     public required Int32 quantizationDepth;
 
     public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
+
+    public abstract String ToString(SyntaxNodeStringificationFlags flags);
+
+    public override String ToString() => ToString(SyntaxNodeStringificationFlags.None);
 }
 
 public class SyntaxEmpty : SyntaxNode
@@ -114,6 +131,8 @@ public class SyntaxEmpty : SyntaxNode
     public override Boolean IsEmpty => true;
 
     public override InputToken GetRepresentativeToken() => token;
+
+    public override String ToString(SyntaxNodeStringificationFlags flags) => "";
 }
 
 public class SyntaxChain : SyntaxNode
@@ -124,7 +143,7 @@ public class SyntaxChain : SyntaxNode
 
     public override Boolean IsEmpty => constituents.Count == 0;
 
-    public override String ToString()
+    public override String ToString(SyntaxNodeStringificationFlags flags)
     {
         var sb = new StringBuilder();
         foreach (var part in constituents)
@@ -143,7 +162,7 @@ public class SyntaxChain : SyntaxNode
             else
             {
                 sb.Append('(');
-                sb.Append(item.ToString());
+                sb.Append(item.ToString(flags));
                 sb.Append(')');
             }
         }
@@ -159,7 +178,7 @@ public class SyntaxAtom : SyntaxNode
 
     public override Boolean IsEmpty => false;
 
-    public override String ToString() => token.ToString();
+    public override String ToString(SyntaxNodeStringificationFlags flags) => token.ToString();
 
     public override InputToken GetRepresentativeToken() => token;
 }
@@ -177,15 +196,22 @@ public class SyntaxQuantization : SyntaxNode
 
     public override Boolean IsEmpty => false;
 
-    public override String ToString()
+    public override String ToString(SyntaxNodeStringificationFlags flags)
     {
+        var headString = head.ToString(flags);
+        var bodyString = body.ToString(flags);
+
         if (IsBraceExpression)
         {
-            return $"{{ {head}: {body} }}";
+            return $"{{ {headString}: {bodyString} }}";
+        }
+        else if (flags.HasFlag(SyntaxNodeStringificationFlags.ParenBodies))
+        {
+            return $"{token} {headString}: ({bodyString})";
         }
         else
         {
-            return $"{token} {head}: {body}";
+            return $"{token} {headString}: {bodyString}";
         }
     }
 

@@ -81,6 +81,7 @@ public class ParsingTests
     [DataRow("x + - x", null)]
 
     [DataRow("∑ n∊N /n^x", null)]
+    [DataRow("∑ n∊N: ∑ m∊N: /n/m", "∑ n∊N: (∑ m∊N: (/n/m))", SyntaxNodeStringificationFlags.ParenBodies)]
     [DataRow("∑ n∊N: ∑ m∊N: n*m", "∑ n∊N: ∑ m∊N: n*m")]
     [DataRow("∑ n∊N: /n + ∑ m∊N: /m", "(∑ n∊N: /n)+(∑ m∊N: /m)")]
     [DataRow("∑ n∊N: (/n + ∑ m∊N: /m)", "∑ n∊N: (/n)+(∑ m∊N: /m)")]
@@ -92,7 +93,7 @@ public class ParsingTests
     [DataRow("{ n∊N: n>m }", "{ n∊N: n>m }")]
     //[DataRow("", "")]
     //[DataRow("", "")]
-    public void TestExpressionParsing(String input, String? expectedEncoded)
+    public void TestExpressionParsing(String input, String? expectedEncoded, SyntaxNodeStringificationFlags? flags = null)
     {
         var parser = new Parser();
 
@@ -104,7 +105,7 @@ public class ParsingTests
         {
             var result = parser.ParseExpression(enumerator);
 
-            Assert.AreEqual(expectedEncoded, result.ToString());
+            Assert.AreEqual(expectedEncoded, result.ToString(flags ?? SyntaxNodeStringificationFlags.None));
         }
         else
         {

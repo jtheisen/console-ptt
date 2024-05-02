@@ -10,55 +10,103 @@ public interface IParserGuide
     Boolean IsBooleanQuantizationSymbol(ReadOnlySpan<Char> op);
 }
 
-public class Magma
+public class Symbol
 {
-    public Operator DefaultOp { get; }
+    public required String Name { get; set; }
 
-    public Operator? NegatedOp { get; }
+    public required String Id { get; init; }
+}
+
+public class OperatorConfiguration
+{
+    public Double Precedence { get; set; }
+}
+
+public class Magma : OperatorConfiguration
+{
+    public String DefaultOp { get; }
+
+    public String? InvertedOp { get; }
 
     public required Boolean IsAssociative { get; init; }
 
-    public required Boolean IsUnordered { get; init; }
+    public required Boolean IsCommutative { get; init; }
 
-    public Double Precedence { get; set; }
+    public String GetOpName(Boolean inverted)
+        => inverted ? InvertedOp ?? throw new Exception("No inverted operator") : DefaultOp;
 
-    public IEnumerable<Operator> GetOperators()
+    public IEnumerable<String> GetOperators()
     {
         yield return DefaultOp;
-        if (NegatedOp is not null)
+        if (InvertedOp is not null)
         {
-            yield return NegatedOp;
+            yield return InvertedOp;
         }
     }
 
-    public Magma(String defaultOp, String? negatedOp = null)
+    public Magma(String defaultOp, String? invertedOp = null)
     {
-        DefaultOp = new Operator { Magma = this, Name = defaultOp };
+        DefaultOp = defaultOp;
+        InvertedOp = invertedOp;
+    }
+}
 
-        if (negatedOp is not null)
+public enum RelationFlags
+{
+    Nothing = 0,
+
+    Transitive = 1,
+    Reflexive = 2,
+    Symmetric = 4,
+
+    Equivalence = Transitive | Reflexive | Symmetric
+}
+
+public class Relation : OperatorConfiguration
+{
+    public required String Name { get; init; }
+
+    public required String Reversed { get; init; }
+
+    public required RelationFlags Flags { get; init; }
+
+    public String GetName(Boolean reversed, Boolean negated)
+    {
+        if (negated)
         {
-            NegatedOp = new Operator { Magma = this, Name = negatedOp };
+            return $"!{GetName(reversed, false)}";
+        }
+        else
+        {
+            return reversed ? Reversed : Name;
         }
     }
 }
 
-public class Operator
+public struct RelationshipTail
 {
-    public required String Name { get; init; }
+    public Relation relation;
 
-    public required Magma Magma { get; init; }
+    public Boolean reversed;
+
+    public Boolean negated;
+
+    public Term rhs;
 }
 
 public interface IContext
 {
-    Boolean TryGetOperator(String name, [NotNullWhen(true)] out Operator? op);
+    Boolean TryResolveOperator(String name, [NotNullWhen(true)] ref OperatorConfiguration? configuration);
 }
 
 public class TestContext : IParserGuide, IContext
 {
-    static String BooleanSymbols = "⇒⇐⇔ ,∨∧ =";
-    static String DomainSymbols = "+- */ ^";
-    static String RelationSymbols = "<>≤≥ ⊂⊃ ⊆⊇ ∊∍ ∈∋ ϵ";
+    static String BooleanPrecedenceOrder = "⇒⇐⇔ ,∨∧ =";
+    static String DomainPrecedenceOrder = "+- */ ^";
+    static String BooleanRelationSymbols = "⇒⇐⇔⇔";
+    static String DomainRelationSymbols = "==  <>≤≥  ⊂⊃  ⊆⊇  ∊∍";
+
+    static String SetSymbols = "ℕℤℚℝℂ";
 
     static String QuantizationCharacters = "∀∃";
 
@@ -69,15 +117,23 @@ public class TestContext : IParserGuide, IContext
 
     Dictionary<Char, Double> precedences;
 
-    Dictionary<String, Operator> operators;
+    Dictionary<String, OperatorConfiguration> operators;
+
+    Dictionary<String, Symbol> symbols;
+
+    public Double BooleanRelationPrecedence { get; }
 
     public TestContext()
     {
         precedences = new Dictionary<Char, Double>();
 
+        operators = new Dictionary<String, OperatorConfiguration>();
+
+        symbols = new Dictionary<String, Symbol>();
+
         {
             var precedence = 0;
-            foreach (var symbolGroup in DomainSymbols.Split())
+            foreach (var symbolGroup in DomainPrecedenceOrder.Split())
             {
                 ++precedence;
 
@@ -89,7 +145,7 @@ public class TestContext : IParserGuide, IContext
         }
 
         {
-            var symbolGroups = BooleanSymbols.Split();
+            var symbolGroups = BooleanPrecedenceOrder.Split();
             for (var i = 0; i < symbolGroups.Length; ++i)
             {
                 foreach (var chr in symbolGroups[i])
@@ -99,15 +155,20 @@ public class TestContext : IParserGuide, IContext
             }
         }
 
-        operators = new Dictionary<String, Operator>();
+        AddMagma(new Magma("*", "/") { IsAssociative = true, IsCommutative = true });
+        AddMagma(new Magma("+", "-") { IsAssociative = true, IsCommutative = true });
 
-        AddMagma(new Magma("*", "/") { IsAssociative = true, IsUnordered = true });
-        AddMagma(new Magma("+", "-") { IsAssociative = true, IsUnordered = true });
+        BooleanRelationPrecedence = GetPrecedence("⇒".AsSpan());
+
+        AddRelations(BooleanRelationSymbols, BooleanRelationPrecedence);
+        AddRelations(DomainRelationSymbols, 0);
+
+        AddSymbols();
     }
 
     Double? GetPrecedenceForOperatorCharacter(Char chr)
     {
-        if (RelationSymbols.IndexOf(chr) != -1)
+        if (DomainRelationSymbols.IndexOf(chr) != -1)
         {
             return 0;
         }
@@ -194,13 +255,44 @@ public class TestContext : IParserGuide, IContext
 
     // End of methods for parsing
 
+    void AddSymbol(String name)
+    {
+        symbols[name] = new Symbol { Id = name, Name = name };
+    }
+
+    void AddSymbols()
+    {
+        AddSymbol("A");
+        AddSymbol("B");
+        AddSymbol("C");
+        AddSymbol("D");
+
+        foreach (var symbol in SetSymbols)
+        {
+            AddSymbol(symbol.ToString());
+        }
+    }
+
+    public Boolean TryGetSymbol(String name, [NotNullWhen(true)] out Symbol? symbol)
+    {
+        return symbols.TryGetValue(name, out symbol);
+    }
+
+    void AddOperator(String op, OperatorConfiguration configuration)
+    {
+        if (!operators.TryAdd(op, configuration))
+        {
+            throw new Exception($"Already have an operator {op} defined");
+        }
+    }
+
     void AddMagma(Magma magma)
     {
         Double? precedence = null;
 
         foreach (var op in magma.GetOperators())
         {
-            var p = GetPrecedence(op.Name.AsSpan());
+            var p = GetPrecedence(op.AsSpan());
 
             if (precedence is Double existingPrecedence)
             {
@@ -214,12 +306,78 @@ public class TestContext : IParserGuide, IContext
                 precedence = magma.Precedence = p;
             }
 
-            operators[op.Name] = op;
+            AddOperator(op, magma);
         }
     }
 
-    public Boolean TryGetOperator(String name, [NotNullWhen(true)] out Operator? op)
+    public Boolean TryResolveOperator(String name, [NotNullWhen(true)] ref OperatorConfiguration? configuration)
     {
-        return operators.TryGetValue(name, out op);
+        return operators.TryGetValue(name, out configuration);
+    }
+
+    void AddRelations(String symbolPairs, Double precedence)
+    {
+        for (var i = 0; i < symbolPairs.Length; i += 2)
+        {
+            var c0 = symbolPairs[i];
+            var c1 = symbolPairs[i + 1];
+
+            var s0 = c0 == ' ';
+            var s1 = c1 == ' ';
+
+            if (s0 != s1)
+            {
+                throw new Exception("Unexpected relation pair");
+            }
+
+            if (s0) continue;
+
+            var f0 = GetFlagsForRelationChar(c0);
+            var f1 = GetFlagsForRelationChar(c1);
+
+            if (f0 != f1)
+            {
+                throw new Exception("Unexpectedly got different flags for parts of relationship character pair");
+            }
+
+            var n0 = c0.ToString();
+            var n1 = c1.ToString();
+
+            var r = new Relation { Flags = f0, Name = n0, Reversed = n1, Precedence = precedence };
+
+            AddOperator(n0, r);
+
+            if (n0 != n1)
+            {
+                AddOperator(n1, r);
+            }
+        }
+    }
+
+    static RelationFlags GetFlagsForRelationChar(Char c)
+    {
+        switch (c)
+        {
+            case '⇔':
+            case '=':
+                return RelationFlags.Equivalence;
+            case '<':
+            case '>':
+            case '⊂':
+            case '⊃':
+                return RelationFlags.Transitive;
+            case '⇒':
+            case '⇐':
+            case '≤':
+            case '≥':
+            case '⊆':
+            case '⊇':
+                return RelationFlags.Transitive | RelationFlags.Reflexive;
+            case '∊':
+            case '∍':
+                return RelationFlags.Nothing;
+            default:
+                throw new Exception($"Unknown relation character '{c}'");
+        }
     }
 }
