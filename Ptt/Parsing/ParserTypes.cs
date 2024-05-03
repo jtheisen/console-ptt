@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace Ptt;
@@ -39,6 +40,22 @@ public struct InputToken
 
     public String TokenString => line[colI..endI];
     public ReadOnlySpan<Char> TokenSpan => line.AsSpan()[colI..endI];
+
+    public Boolean TryGetOperatorName([NotNullWhen(true)] out String? opName, out Boolean negated)
+    {
+        var span = TokenSpan;
+
+        opName = null;
+        negated = false;
+
+        if (cls != InputCharClass.Operator || span.Length == 0) return false;
+
+        negated = span[0] == '!';
+
+        opName = span[(negated ? 1 : 0)..].ToString();
+
+        return true;
+    }
 
     public String DebugString => line is not null ? line.Length == 0 ? $":empty {cls}:" : TokenString : $":{cls}:";
 

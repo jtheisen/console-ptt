@@ -59,6 +59,8 @@ public class ParsingTests
     [DataRow("(x)", "x")]
     [DataRow("((x))", "x")]
     [DataRow("x,y", "x,y")]
+    [DataRow("x<y", "x<y")]
+    [DataRow("x!<y", "x!<y")]
     [DataRow("x+y", "x+y")]
     [DataRow("x+y-z", "x+y-z")]
     [DataRow("x+y*z", "x+(y*z)")]

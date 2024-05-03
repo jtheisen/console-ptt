@@ -87,7 +87,7 @@ public struct RelationshipTail
 {
     public Relation relation;
 
-    public Boolean reversed;
+    public Boolean conversed;
 
     public Boolean negated;
 

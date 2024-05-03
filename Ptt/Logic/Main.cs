@@ -147,7 +147,7 @@ public class RelationalTerm : SequenceTerm
 
             foreach (var i in Tail)
             {
-                yield return (i.relation.GetName(i.reversed, i.negated), i.rhs);
+                yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
             }
         }
     }
@@ -271,9 +271,9 @@ public class ContextBuilder
         public InputToken opToken;
         public Term? term;
         public OperatorConfiguration? configuration;
-        public Boolean isInverted;
-        public Boolean isReversed;
-        public Boolean isNegated;
+        public Boolean inverted;
+        public Boolean conversed;
+        public Boolean negated;
     }
 
     SequenceTerm CreateSequence(SyntaxChain chain)
@@ -297,7 +297,10 @@ public class ContextBuilder
 
             if (opToken)
             {
-                var opName = opToken.TokenString;
+                if (!opToken.TryGetOperatorName(out var opName, out item.negated))
+                {
+                    throw new AssertionException($"Can't get operator name from token {opToken}");
+                }
 
                 if (!guide.TryResolveOperator(opName, ref item.configuration))
                 {
@@ -306,6 +309,11 @@ public class ContextBuilder
                 
                 if (item.configuration is Magma someMagma)
                 {
+                    if (item.negated)
+                    {
+                        throw Error(opToken, "Magmatic operators can't be negated ('!' is invalid here)");
+                    }
+
                     if (magma is not null && !ReferenceEquals(someMagma, magma))
                     {
                         throw Error(chain.GetRepresentativeToken(), "Sequence uses operators from different magmas");
@@ -324,7 +332,7 @@ public class ContextBuilder
                     }
                     else
                     {
-                        item.isInverted = true;
+                        item.inverted = true;
                     }
                 }
                 else if (item.configuration is Relation relation)
@@ -340,7 +348,7 @@ public class ContextBuilder
                     }
                     else
                     {
-                        item.isReversed = true;
+                        item.conversed = true;
                     }
                 }
                 else
@@ -367,7 +375,7 @@ public class ContextBuilder
                 ref var target = ref operands[i];
 
                 target.term = item.term!;
-                target.inverted = item.isInverted;
+                target.inverted = item.inverted;
             }
 
             return new MagmaticTerm { Magma = magma, Operands = operands, Precedence = magma.Precedence };
@@ -390,7 +398,7 @@ public class ContextBuilder
 
                 target.rhs = item.term!;
                 target.relation = relation;
-                target.reversed = item.isReversed;
+                target.conversed = item.conversed;
 
                 if (precedence == Double.MinValue)
                 {

@@ -32,6 +32,8 @@ public class Parser
                 return InputCharClass.OpeningBrace;
             case '}':
                 return InputCharClass.ClosingBrace;
+            case '!':
+                return InputCharClass.Operator;
             default:
                 break;
         }
