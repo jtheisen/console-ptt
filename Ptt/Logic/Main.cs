@@ -93,46 +93,20 @@ public struct OperandsComparer : IComparer<(Boolean inverted, Term term)>
 
 public abstract class SequenceTerm : Term
 {
-    public abstract IEnumerable<(String? op, Term term)> Items { get; }
+    public abstract IEnumerable<(String? op, Term term)> GetItems(Boolean useIds);
 
     public abstract Boolean IsUnordered { get; }
 
     protected override Int32 EstimateRenderLength()
     {
-        return Items.Sum(i => i.term.EstimatedRenderLength + (i.op?.Length ?? 0) + 2);
-    }
-}
-
-public class RelationalTerm : SequenceTerm
-{
-    public required Term FirstTerm { get; init; }
-
-    public required RelationshipTail[] Tail { get; init; }
-
-    public required Boolean IsBoolean { get; init; }
-
-    public Boolean IsRelation => Tail.Length == 1;
-
-    public override Boolean IsUnordered => IsRelation && Tail[0].relation.Flags.HasFlag(RelationFlags.Symmetric);
-
-    public override IEnumerable<(String? op, Term term)> Items
-    {
-        get
-        {
-            yield return (null, FirstTerm);
-
-            foreach (var i in Tail)
-            {
-                yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
-            }
-        }
+        return GetItems(false).Sum(i => i.term.EstimatedRenderLength + (i.op?.Length ?? 0) + 2);
     }
 
     protected override void Render(SmartStringWriter writer, Boolean useIds)
     {
         var ownPrecendence = Precedence;
 
-        var items = Items;
+        var items = GetItems(useIds);
 
         foreach (var item in items)
         {
@@ -148,6 +122,29 @@ public class RelationalTerm : SequenceTerm
             writer.Close();
             if (needParens) writer.Write(")");
         }
+    }    
+}
+
+public class RelationalTerm : SequenceTerm
+{
+    public required Term FirstTerm { get; init; }
+
+    public required RelationshipTail[] Tail { get; init; }
+
+    public required Boolean IsBoolean { get; init; }
+
+    public Boolean IsRelation => Tail.Length == 1;
+
+    public override Boolean IsUnordered => IsRelation && Tail[0].relation.Flags.HasFlag(RelationFlags.Symmetric);
+
+    public override IEnumerable<(String? op, Term term)> GetItems(Boolean useIds)
+    {
+        yield return (null, FirstTerm);
+
+        foreach (var i in Tail)
+        {
+            yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
+        }
     }
 }
 
@@ -159,49 +156,46 @@ public class FunctionalTerm : SequenceTerm
 
     public override Boolean IsUnordered => Functional.IsCommutative;
 
-    public override IEnumerable<(String? op, Term term)> Items
-        => from o in Operands select ((String? op, Term term))(Functional.GetOpName(o.inverted), o.term);
+    IEnumerable<(Boolean inverted, Term term)> GetOperands()
+    {
+        var functional = Functional;
+
+        foreach (var operand in Operands)
+        {
+            var (inverted, term) = operand;
+
+            if (term is FunctionalTerm otherFunctional &&
+                functional == otherFunctional.Functional &&
+                functional.IsAssociative)
+            {
+                foreach (var item in otherFunctional.GetOperands())
+                {
+                    yield return (item.inverted != inverted, item.term);
+                }
+            }
+            else
+            {
+                yield return operand;
+            }
+        }
+    }
 
     static OperandsComparer operandsComparer;
 
-    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    public override IEnumerable<(String? op, Term term)> GetItems(Boolean useIds)
     {
-        var ownPrecendence = Precedence;
-
-        var operands = Operands.ToList();
-
-        var functional = Functional;
+        var operands = GetOperands().ToList();
 
         if (useIds && IsUnordered)
         {
             operands.Sort(operandsComparer);
         }
 
-        var isSubsequent = false;
+        Boolean isSubsequent = false;
 
-        foreach (var operand in operands)
+        foreach (var o in operands)
         {
-            var (inverted, term) = operand;
-
-            var isCollapsible =
-                !inverted &&
-                term is FunctionalTerm otherFunctional &&
-                Functional == otherFunctional.Functional &&
-                Functional.IsAssociative
-                ;
-
-            var needParens = !isCollapsible && ownPrecendence >= term.Precedence;
-
-            var op = functional.GetOpName(inverted);
-
-            writer.Break(relativeNesting: -op.Length);
-
-            if (needParens) writer.Write("(");
-            writer.Open(term.EstimatedRenderLength);
-            if (isSubsequent) writer.Write(op);
-            term.Write(writer, useIds);
-            writer.Close();
-            if (needParens) writer.Write(")");
+            yield return (isSubsequent ? Functional.GetOpName(o.inverted) : null, o.term);
 
             isSubsequent = true;
         }

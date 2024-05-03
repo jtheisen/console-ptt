@@ -25,6 +25,8 @@ public class TermTests
             [ "A" ],
             [ "B" ],
             [ "A*B", "B*A", "A*(B<C)" ],
+            [ "A*B*C", "A*(B*C)" ],
+            [ "A/B/C", "A*(/B/C)", "A/(B*C)", "/(B*C)*A", "/C/B/A", "(/C/B)/A", "/(C*B)/A" ],
             [ "A+B", "B+A" ],
             [ "A/B", "/B*A" ],
             [ "A-B", "-B+A" ],
@@ -62,5 +64,12 @@ public class TermTests
 
             terms.Add(first);
         }
+    }
+
+    [TestMethod]
+    [DataRow("a", "x * y")]
+    public void TestUnification()
+    {
+
     }
 }
