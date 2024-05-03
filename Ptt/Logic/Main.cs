@@ -1,7 +1,4 @@
-﻿using System.Collections;
-using System.Diagnostics.CodeAnalysis;
-
-namespace Ptt;
+﻿namespace Ptt;
 
 public abstract class Term : IEquatable<Term>
 {
@@ -38,6 +35,8 @@ public abstract class Term : IEquatable<Term>
 
     public required Double Precedence { get; init; }
 
+    public AnnotationTerm? Annotation { get; init; }
+
     public Boolean Equals(Term? other) => Id == other?.Id;
 
     public override Int32 GetHashCode() => Id.GetHashCode();
@@ -66,6 +65,18 @@ public abstract class Term : IEquatable<Term>
     protected abstract Int32 EstimateRenderLength();
 
     protected abstract void Render(SmartStringWriter writer, Boolean useIds);
+}
+
+public class AnnotationTerm
+{
+    public FunctionalTerm? Subsequence { get; init; }
+
+    public RelationshipTail Tail { get; init; }
+
+    public Int32 EstimateRenderLength()
+    {
+        return (Subsequence?.EstimatedRenderLength ?? 0) + Tail.relation.Name.Length + Tail.rhs.EstimatedRenderLength + 2;
+    }
 }
 
 public struct SequenceItemComparer : IComparer<(String? op, Term term)>
@@ -153,15 +164,20 @@ public class RelationalTerm : SequenceTerm
     }
 }
 
-public class MagmaticTerm : SequenceTerm
+public class FunctionalTerm : SequenceTerm
 {
-    public required Magma Magma { get; init; }
+    public required Functional Functional { get; init; }
 
-    public required (Boolean inverted, Term term)[] Operands { get; init; }
+    public required (Boolean inverted, Term term)[] PartialOperands { get; init; }
 
-    public override Boolean IsUnordered => Magma.IsCommutative;
+    public override Boolean IsUnordered => Functional.IsCommutative;
 
-    public override IEnumerable<(String? op, Term term)> Items => from o in Operands select ((String? op, Term term))(Magma.GetOpName(o.inverted), o.term);
+    public IEnumerable<(Boolean inverted, Term term)> UnwrappedOperands => Annotation is null || Annotation.Subsequence is null
+        ? PartialOperands
+        : PartialOperands.Concat(Annotation.Subsequence.PartialOperands);
+
+    public override IEnumerable<(String? op, Term term)> Items
+        => from o in UnwrappedOperands select ((String? op, Term term))(Functional.GetOpName(o.inverted), o.term);
 }
 
 public class QuantizationTerm : Term
@@ -284,9 +300,9 @@ public class ContextBuilder
 
         var items = new IntermediateSequenceItem[n];
 
-        Magma? magma = null;
+        Functional? functional = null;
 
-        Int32 haveMagma = 0, haveRelation = 0;
+        Int32 haveFunctional = 0, haveRelation = 0;
 
         for (var i = 0; i < n; ++i)
         {
@@ -307,25 +323,25 @@ public class ContextBuilder
                     throw Error(opToken, $"Can't resolve operator '{opName}'");
                 }
                 
-                if (item.configuration is Magma someMagma)
+                if (item.configuration is Functional someFunctional)
                 {
                     if (item.negated)
                     {
-                        throw Error(opToken, "Magmatic operators can't be negated ('!' is invalid here)");
+                        throw Error(opToken, "Functional operators can't be negated ('!' is invalid here)");
                     }
 
-                    if (magma is not null && !ReferenceEquals(someMagma, magma))
+                    if (functional is not null && !ReferenceEquals(someFunctional, functional))
                     {
-                        throw Error(chain.GetRepresentativeToken(), "Sequence uses operators from different magmas");
+                        throw Error(chain.GetRepresentativeToken(), "Sequence uses operators from different functionals");
                     }
 
-                    magma = someMagma;
+                    functional = someFunctional;
 
-                    haveMagma = 1;
+                    haveFunctional = 1;
 
-                    if (opName != magma.InvertedOp)
+                    if (opName != functional.InvertedOp)
                     {
-                        if (opName != magma.DefaultOp)
+                        if (opName != functional.DefaultOp)
                         {
                             throw new Exception($"Internal error: Unexpected operator '{opName}'");
                         }
@@ -360,12 +376,12 @@ public class ContextBuilder
             item.term = Create(term);
         }
 
-        if (haveMagma + haveRelation > 1)
+        if (haveFunctional + haveRelation > 1)
         {
-            throw Error(chain.GetRepresentativeToken(), "Sequence mixes relations with magmatic operators");
+            throw Error(chain.GetRepresentativeToken(), "Sequence mixes relations with functional operators");
         }
 
-        if (magma is not null)
+        if (functional is not null)
         {
             var operands = new (Boolean inverted, Term term)[n];
 
@@ -378,7 +394,7 @@ public class ContextBuilder
                 target.inverted = item.inverted;
             }
 
-            return new MagmaticTerm { Magma = magma, Operands = operands, Precedence = magma.Precedence };
+            return new FunctionalTerm { Functional = functional, PartialOperands = operands, Precedence = functional.Precedence };
         }
         else if (haveRelation > 0)
         {

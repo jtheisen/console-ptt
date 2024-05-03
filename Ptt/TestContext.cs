@@ -22,7 +22,7 @@ public class OperatorConfiguration
     public Double Precedence { get; set; }
 }
 
-public class Magma : OperatorConfiguration
+public class Functional : OperatorConfiguration
 {
     public String DefaultOp { get; }
 
@@ -44,7 +44,7 @@ public class Magma : OperatorConfiguration
         }
     }
 
-    public Magma(String defaultOp, String? invertedOp = null)
+    public Functional(String defaultOp, String? invertedOp = null)
     {
         DefaultOp = defaultOp;
         InvertedOp = invertedOp;
@@ -155,8 +155,8 @@ public class TestContext : IParserGuide, IContext
             }
         }
 
-        AddMagma(new Magma("*", "/") { IsAssociative = true, IsCommutative = true });
-        AddMagma(new Magma("+", "-") { IsAssociative = true, IsCommutative = true });
+        AddFunctional(new Functional("*", "/") { IsAssociative = true, IsCommutative = true });
+        AddFunctional(new Functional("+", "-") { IsAssociative = true, IsCommutative = true });
 
         BooleanRelationPrecedence = GetPrecedence("⇒".AsSpan());
 
@@ -286,11 +286,11 @@ public class TestContext : IParserGuide, IContext
         }
     }
 
-    void AddMagma(Magma magma)
+    void AddFunctional(Functional functional)
     {
         Double? precedence = null;
 
-        foreach (var op in magma.GetOperators())
+        foreach (var op in functional.GetOperators())
         {
             var p = GetPrecedence(op.AsSpan());
 
@@ -298,15 +298,15 @@ public class TestContext : IParserGuide, IContext
             {
                 if (existingPrecedence != p)
                 {
-                    throw new Exception("Different precedences for magma operators");
+                    throw new Exception("Different precedences for functional operators");
                 }
             }
             else
             {
-                precedence = magma.Precedence = p;
+                precedence = functional.Precedence = p;
             }
 
-            AddOperator(op, magma);
+            AddOperator(op, functional);
         }
     }
 
