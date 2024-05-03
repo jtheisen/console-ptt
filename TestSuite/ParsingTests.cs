@@ -93,6 +93,7 @@ public class ParsingTests
     [DataRow("∀ x∊X,X⊆Y ∃ y∊Y: x<y", "∀ (x∊X),(X⊆Y): ∃ y∊Y: x<y")]
 
     [DataRow("{ n∊N: n>m }", "{ n∊N: n>m }")]
+    
     //[DataRow("", "")]
     //[DataRow("", "")]
     public void TestExpressionParsing(String input, String? expectedEncoded, SyntaxNodeStringificationFlags? flags = null)

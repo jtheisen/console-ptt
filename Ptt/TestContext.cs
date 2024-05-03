@@ -20,6 +20,8 @@ public class Symbol
 public class OperatorConfiguration
 {
     public Double Precedence { get; set; }
+
+    public Boolean IsBoolean => Precedence < 0;
 }
 
 public class Functional : OperatorConfiguration

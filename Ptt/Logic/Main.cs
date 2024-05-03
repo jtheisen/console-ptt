@@ -35,7 +35,9 @@ public abstract class Term : IEquatable<Term>
 
     public required Double Precedence { get; init; }
 
-    public AnnotationTerm? Annotation { get; init; }
+    public TermAnnotation? Annotation { get; set; }
+
+    public InputToken? RepresentativeToken { get; set; }
 
     public Boolean Equals(Term? other) => Id == other?.Id;
 
@@ -67,27 +69,23 @@ public abstract class Term : IEquatable<Term>
     protected abstract void Render(SmartStringWriter writer, Boolean useIds);
 }
 
-public class AnnotationTerm
+public class TermAnnotation
 {
-    public FunctionalTerm? Subsequence { get; init; }
-
     public RelationshipTail Tail { get; init; }
-
-    public Int32 EstimateRenderLength()
-    {
-        return (Subsequence?.EstimatedRenderLength ?? 0) + Tail.relation.Name.Length + Tail.rhs.EstimatedRenderLength + 2;
-    }
 }
 
-public struct SequenceItemComparer : IComparer<(String? op, Term term)>
+public struct OperandsComparer : IComparer<(Boolean inverted, Term term)>
 {
-    public Int32 Compare((String? op, Term term) x, (String? op, Term term) y)
+    public Int32 Compare((Boolean inverted, Term term) x, (Boolean inverted, Term term) y)
     {
-        var c0 = String.Compare(x.term.Id, y.term.Id);
+        var dx = x.inverted ? 1 : 0;
+        var dy = y.inverted ? 1 : 0;
+
+        var c0 = dx - dy;
 
         if (c0 != 0) return c0;
 
-        var c1 = String.Compare(x.op, y.op);
+        var c1 = String.Compare(x.term.Id, y.term.Id);
 
         return c1;
     }
@@ -102,39 +100,6 @@ public abstract class SequenceTerm : Term
     protected override Int32 EstimateRenderLength()
     {
         return Items.Sum(i => i.term.EstimatedRenderLength + (i.op?.Length ?? 0) + 2);
-    }
-
-    static SequenceItemComparer sequenceItemComparer;
-
-    protected override void Render(SmartStringWriter writer, Boolean useIds)
-    {
-        var ownPrecendence = Precedence;
-
-        var items = Items;
-
-        if (useIds && IsUnordered)
-        {
-            var itemList = Items.ToList();
-
-            itemList.Sort(sequenceItemComparer);
-
-            items = itemList;
-        }
-
-        foreach (var item in items)
-        {
-            var (op, term) = item;
-
-            var needParens = ownPrecendence >= term.Precedence;
-
-            writer.Break(relativeNesting: -op?.Length ?? 0);
-            if (needParens) writer.Write("(");
-            writer.Open(term.EstimatedRenderLength);
-            if (op is not null) writer.Write(op);
-            term.Write(writer, useIds);
-            writer.Close();
-            if (needParens) writer.Write(")");
-        }
     }
 }
 
@@ -162,22 +127,85 @@ public class RelationalTerm : SequenceTerm
             }
         }
     }
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        var ownPrecendence = Precedence;
+
+        var items = Items;
+
+        foreach (var item in items)
+        {
+            var (op, term) = item;
+
+            var needParens = ownPrecendence >= term.Precedence;
+
+            writer.Break(relativeNesting: -op?.Length ?? 0);
+            if (needParens) writer.Write("(");
+            writer.Open(term.EstimatedRenderLength);
+            if (op is not null) writer.Write(op);
+            term.Write(writer, useIds);
+            writer.Close();
+            if (needParens) writer.Write(")");
+        }
+    }
 }
 
 public class FunctionalTerm : SequenceTerm
 {
     public required Functional Functional { get; init; }
 
-    public required (Boolean inverted, Term term)[] PartialOperands { get; init; }
+    public required (Boolean inverted, Term term)[] Operands { get; init; }
 
     public override Boolean IsUnordered => Functional.IsCommutative;
 
-    public IEnumerable<(Boolean inverted, Term term)> UnwrappedOperands => Annotation is null || Annotation.Subsequence is null
-        ? PartialOperands
-        : PartialOperands.Concat(Annotation.Subsequence.PartialOperands);
-
     public override IEnumerable<(String? op, Term term)> Items
-        => from o in UnwrappedOperands select ((String? op, Term term))(Functional.GetOpName(o.inverted), o.term);
+        => from o in Operands select ((String? op, Term term))(Functional.GetOpName(o.inverted), o.term);
+
+    static OperandsComparer operandsComparer;
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        var ownPrecendence = Precedence;
+
+        var operands = Operands.ToList();
+
+        var functional = Functional;
+
+        if (useIds && IsUnordered)
+        {
+            operands.Sort(operandsComparer);
+        }
+
+        var isSubsequent = false;
+
+        foreach (var operand in operands)
+        {
+            var (inverted, term) = operand;
+
+            var isCollapsible =
+                !inverted &&
+                term is FunctionalTerm otherFunctional &&
+                Functional == otherFunctional.Functional &&
+                Functional.IsAssociative
+                ;
+
+            var needParens = !isCollapsible && ownPrecendence >= term.Precedence;
+
+            var op = functional.GetOpName(inverted);
+
+            writer.Break(relativeNesting: -op.Length);
+
+            if (needParens) writer.Write("(");
+            writer.Open(term.EstimatedRenderLength);
+            if (isSubsequent) writer.Write(op);
+            term.Write(writer, useIds);
+            writer.Close();
+            if (needParens) writer.Write(")");
+
+            isSubsequent = true;
+        }
+    }
 }
 
 public class QuantizationTerm : Term
@@ -292,6 +320,78 @@ public class ContextBuilder
         public Boolean negated;
     }
 
+    Term UnwrapAnnotation(Term term)
+    {
+        if (TryGetAnnoation(term, out var lhs, out var tail))
+        {
+            lhs.Annotation = new TermAnnotation
+            {
+                Tail = tail
+            };
+
+            return lhs;
+        }
+        else
+        {
+            throw new AssertionException("Expected an annotation to unwrap");
+        }
+    }
+
+    Boolean TryGetAnnoation(Term term, [NotNullWhen(true)] out Term? lhs, out RelationshipTail tail)
+    {
+        if (term is RelationalTerm relational)
+        {
+            var relationshipTail = relational.Tail;
+
+            if (relationshipTail.Length != 1)
+            {
+                throw Error(term.RepresentativeToken, "Annotations can't have multiple relations");
+            }
+
+            lhs = relational.FirstTerm;
+            tail = relationshipTail[0];
+
+            return true;
+        }
+        else
+        {
+            lhs = null;
+            tail = default;
+
+            return false;
+        }
+    }
+
+    // Do we still need this?
+    SequenceTerm UnwrapSequenceAnnotations(SequenceTerm sequence)
+    {
+        // This function modifies the sequence.
+
+        if (sequence is FunctionalTerm functional)
+        {
+            var operands = functional.Operands;
+
+            var n = operands.Length;
+
+            for (var i = 0; i < n; ++i)
+            {
+                ref var operand = ref operands[i];
+
+                if (TryGetAnnoation(operand.term, out var lhs, out var tail))
+                {
+                    if (operand.inverted)
+                    {
+                        throw Error(operand.term.RepresentativeToken, "Annoation can't be made on inverted operator");
+                    }
+
+                    operands[i].term = lhs;
+                }
+            }
+        }
+
+        return sequence;
+    }
+
     SequenceTerm CreateSequence(SyntaxChain chain)
     {
         var constituents = chain.constituents;
@@ -390,11 +490,23 @@ public class ContextBuilder
                 ref var item = ref items[i];
                 ref var target = ref operands[i];
 
+                if (!functional.IsBoolean && item.term is RelationalTerm)
+                {
+                    // A relational term inside a domain functional one is an annotation
+
+                    item.term = UnwrapAnnotation(item.term);
+
+                    if (item.term is RelationalTerm)
+                    {
+                        throw Error(item.term.RepresentativeToken, "Relational sequences can't be nested twice");
+                    }
+                }
+
                 target.term = item.term!;
                 target.inverted = item.inverted;
             }
 
-            return new FunctionalTerm { Functional = functional, PartialOperands = operands, Precedence = functional.Precedence };
+            return new FunctionalTerm { Functional = functional, Operands = operands, Precedence = functional.Precedence };
         }
         else if (haveRelation > 0)
         {
@@ -496,6 +608,13 @@ public class ContextBuilder
 
                 var body = Create(quantization.body);
 
+                if (precedence > 0 && body is RelationalTerm relationalTerm)
+                {
+                    // Relations in a domain quantification's body are annotations.
+
+                    body = UnwrapAnnotation(relationalTerm);
+                }
+
                 return new QuantizationTerm
                 {
                     QuantizationSymbol = quantization.token.TokenString,
@@ -524,8 +643,15 @@ public class ContextBuilder
         _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
     };
 
-    Exception Error(InputToken token, String message)
+    Exception Error(InputToken? tokenOrNot, String message)
     {
-        return new ParsingException(token.GetContextMessage(message));
+        if (tokenOrNot is InputToken token)
+        {
+            return new ParsingException(token.GetContextMessage(message));
+        }
+        else
+        {
+            return new ParsingException(message);
+        }
     }
 }
