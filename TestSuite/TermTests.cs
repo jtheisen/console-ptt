@@ -6,7 +6,7 @@ namespace TestSuite;
 public class TermTests
 {
     [TestMethod]
-    public void TestSameness()
+    public void TestInterchangeability()
     {
         var parser = new Parser();
 
@@ -67,9 +67,12 @@ public class TermTests
     }
 
     [TestMethod]
-    [DataRow("a", "x * y")]
-    public void TestUnification()
+    [DataRow("∀x∀y∀z: x*y+x*z = x*(y+z)", "x*y+x*z = x*(y+z)")]
+    [DataRow("∀x∀y∀z: x*y+x*z = x*(y+z)", "a*c*(*b) + d*b*e = b*(a*c+d*e)")]
+    [DataRow("∀x: x=x+0", "0=0+0")]
+    [DataRow("∀x∀y∀z: x*y+x*z = x*(y+z)", "x*(0+0)=x*0+x*0")]
+    [DataRow("∀x: x-x=0", "x*0-x*0=0")]
+    public void TestUnification(String rule, String target)
     {
-
     }
 }
