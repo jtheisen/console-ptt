@@ -93,7 +93,7 @@ public struct RelationshipTail
 
     public Boolean negated;
 
-    public Term rhs;
+    public Expression rhs;
 }
 
 public interface IContext

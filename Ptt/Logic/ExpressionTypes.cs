@@ -1,6 +1,6 @@
 ﻿namespace Ptt;
 
-public abstract class Term : IEquatable<Term>
+public abstract class Expression : IEquatable<Expression>
 {
     String? id;
 
@@ -35,15 +35,15 @@ public abstract class Term : IEquatable<Term>
 
     public required Double Precedence { get; init; }
 
-    public TermAnnotation? Annotation { get; set; }
+    public ExpressionAnnotation? Annotation { get; set; }
 
     public InputToken? RepresentativeToken { get; set; }
 
-    public Boolean Equals(Term? other) => Id == other?.Id;
+    public Boolean Equals(Expression? other) => Id == other?.Id;
 
     public override Int32 GetHashCode() => Id.GetHashCode();
 
-    public override Boolean Equals(Object? obj) => Equals(obj as Term);
+    public override Boolean Equals(Object? obj) => Equals(obj as Expression);
 
     public override String ToString()
     {
@@ -69,14 +69,14 @@ public abstract class Term : IEquatable<Term>
     protected abstract void Render(SmartStringWriter writer, Boolean useIds);
 }
 
-public class TermAnnotation
+public class ExpressionAnnotation
 {
     public RelationshipTail Tail { get; init; }
 }
 
-public struct OperandsComparer : IComparer<(Boolean inverted, Term term)>
+public struct OperandsComparer : IComparer<(Boolean inverted, Expression expr)>
 {
-    public Int32 Compare((Boolean inverted, Term term) x, (Boolean inverted, Term term) y)
+    public Int32 Compare((Boolean inverted, Expression expr) x, (Boolean inverted, Expression expr) y)
     {
         var dx = x.inverted ? 1 : 0;
         var dy = y.inverted ? 1 : 0;
@@ -85,21 +85,21 @@ public struct OperandsComparer : IComparer<(Boolean inverted, Term term)>
 
         if (c0 != 0) return c0;
 
-        var c1 = String.Compare(x.term.Id, y.term.Id);
+        var c1 = String.Compare(x.expr.Id, y.expr.Id);
 
         return c1;
     }
 }
 
-public abstract class SequenceTerm : Term
+public abstract class SequenceExpression : Expression
 {
-    public abstract IEnumerable<(String? op, Term term)> GetItems(Boolean useIds);
+    public abstract IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds);
 
     public abstract Boolean IsUnordered { get; }
 
     protected override Int32 EstimateRenderLength()
     {
-        return GetItems(false).Sum(i => i.term.EstimatedRenderLength + (i.op?.Length ?? 0) + 2);
+        return GetItems(false).Sum(i => i.expr.EstimatedRenderLength + (i.op?.Length ?? 0) + 2);
     }
 
     protected override void Render(SmartStringWriter writer, Boolean useIds)
@@ -110,24 +110,24 @@ public abstract class SequenceTerm : Term
 
         foreach (var item in items)
         {
-            var (op, term) = item;
+            var (op, expr) = item;
 
-            var needParens = ownPrecendence >= term.Precedence;
+            var needParens = ownPrecendence >= expr.Precedence;
 
             writer.Break(relativeNesting: -op?.Length ?? 0);
             if (needParens) writer.Write("(");
-            writer.Open(term.EstimatedRenderLength);
+            writer.Open(expr.EstimatedRenderLength);
             if (op is not null) writer.Write(op);
-            term.Write(writer, useIds);
+            expr.Write(writer, useIds);
             writer.Close();
             if (needParens) writer.Write(")");
         }
     }
 }
 
-public class RelationalTerm : SequenceTerm
+public class RelationalExpression : SequenceExpression
 {
-    public required Term FirstTerm { get; init; }
+    public required Expression FirstExpression { get; init; }
 
     public required RelationshipTail[] Tail { get; init; }
 
@@ -137,9 +137,9 @@ public class RelationalTerm : SequenceTerm
 
     public override Boolean IsUnordered => IsRelation && Tail[0].relation.Flags.HasFlag(RelationFlags.Symmetric);
 
-    public override IEnumerable<(String? op, Term term)> GetItems(Boolean useIds)
+    public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
     {
-        yield return (null, FirstTerm);
+        yield return (null, FirstExpression);
 
         foreach (var i in Tail)
         {
@@ -148,29 +148,29 @@ public class RelationalTerm : SequenceTerm
     }
 }
 
-public class FunctionalTerm : SequenceTerm
+public class FunctionalExpression : SequenceExpression
 {
     public required Functional Functional { get; init; }
 
-    public required (Boolean inverted, Term term)[] Operands { get; init; }
+    public required (Boolean inverted, Expression expr)[] Operands { get; init; }
 
     public override Boolean IsUnordered => Functional.IsCommutative;
 
-    IEnumerable<(Boolean inverted, Term term)> GetOperands()
+    IEnumerable<(Boolean inverted, Expression expr)> GetOperands()
     {
         var functional = Functional;
 
         foreach (var operand in Operands)
         {
-            var (inverted, term) = operand;
+            var (inverted, expr) = operand;
 
-            if (term is FunctionalTerm otherFunctional &&
+            if (expr is FunctionalExpression otherFunctional &&
                 functional == otherFunctional.Functional &&
                 functional.IsAssociative)
             {
                 foreach (var item in otherFunctional.GetOperands())
                 {
-                    yield return (item.inverted != inverted, item.term);
+                    yield return (item.inverted != inverted, item.expr);
                 }
             }
             else
@@ -182,7 +182,7 @@ public class FunctionalTerm : SequenceTerm
 
     static OperandsComparer operandsComparer;
 
-    public override IEnumerable<(String? op, Term term)> GetItems(Boolean useIds)
+    public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
     {
         var operands = GetOperands().ToList();
 
@@ -195,22 +195,22 @@ public class FunctionalTerm : SequenceTerm
 
         foreach (var o in operands)
         {
-            yield return (isSubsequent ? Functional.GetOpName(o.inverted) : null, o.term);
+            yield return (isSubsequent ? Functional.GetOpName(o.inverted) : null, o.expr);
 
             isSubsequent = true;
         }
     }
 }
 
-public class QuantizationTerm : Term
+public class QuantizationExpression : Expression
 {
     public required String QuantizationSymbol { get; init; }
 
     public required Symbol Symbol { get; init; }
 
-    public required Term Head { get; init; }
+    public required Expression Head { get; init; }
 
-    public required Term Body { get; init; }
+    public required Expression Body { get; init; }
 
     protected override Int32 EstimateRenderLength() => Symbol.Name.Length + Head.EstimatedRenderLength + Body.EstimatedRenderLength + 2;
 
@@ -232,7 +232,7 @@ public class QuantizationTerm : Term
     }
 }
 
-public class AtomTerm : Term
+public class AtomExpression : Expression
 {
     public required Symbol Symbol { get; init; }
 

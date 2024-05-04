@@ -1,6 +1,6 @@
 ﻿namespace Ptt;
 
-public class ContextBuilder
+public class SyntaxAdopter
 {
     TestContext guide = new TestContext();
 
@@ -10,7 +10,6 @@ public class ContextBuilder
     {
         return guide.TryGetSymbol(name, out symbol) || symbols.TryGetValue(name, out symbol);
     }
-
 
     Symbol GetSymbol(SyntaxAtom atom)
     {
@@ -52,28 +51,28 @@ public class ContextBuilder
         }
     }
 
-    AtomTerm CreateAtom(SyntaxAtom atom)
+    AtomExpression CreateAtom(SyntaxAtom atom)
     {
         var symbol = GetSymbol(atom);
 
-        return new AtomTerm { Symbol = symbol, Precedence = Double.MaxValue };
+        return new AtomExpression { Symbol = symbol, Precedence = Double.MaxValue };
     }
 
     struct IntermediateSequenceItem
     {
         public InputToken opToken;
-        public Term? term;
+        public Expression? expr;
         public OperatorConfiguration? configuration;
         public Boolean inverted;
         public Boolean conversed;
         public Boolean negated;
     }
 
-    Term UnwrapAnnotation(Term term)
+    Expression UnwrapAnnotation(Expression expr)
     {
-        if (TryGetAnnoation(term, out var lhs, out var tail))
+        if (TryGetAnnoation(expr, out var lhs, out var tail))
         {
-            lhs.Annotation = new TermAnnotation
+            lhs.Annotation = new ExpressionAnnotation
             {
                 Tail = tail
             };
@@ -86,18 +85,18 @@ public class ContextBuilder
         }
     }
 
-    Boolean TryGetAnnoation(Term term, [NotNullWhen(true)] out Term? lhs, out RelationshipTail tail)
+    Boolean TryGetAnnoation(Expression expr, [NotNullWhen(true)] out Expression? lhs, out RelationshipTail tail)
     {
-        if (term is RelationalTerm relational)
+        if (expr is RelationalExpression relational)
         {
             var relationshipTail = relational.Tail;
 
             if (relationshipTail.Length != 1)
             {
-                throw Error(term.RepresentativeToken, "Annotations can't have multiple relations");
+                throw Error(expr.RepresentativeToken, "Annotations can't have multiple relations");
             }
 
-            lhs = relational.FirstTerm;
+            lhs = relational.FirstExpression;
             tail = relationshipTail[0];
 
             return true;
@@ -112,11 +111,11 @@ public class ContextBuilder
     }
 
     // Do we still need this?
-    SequenceTerm UnwrapSequenceAnnotations(SequenceTerm sequence)
+    SequenceExpression UnwrapSequenceAnnotations(SequenceExpression sequence)
     {
         // This function modifies the sequence.
 
-        if (sequence is FunctionalTerm functional)
+        if (sequence is FunctionalExpression functional)
         {
             var operands = functional.Operands;
 
@@ -126,14 +125,14 @@ public class ContextBuilder
             {
                 ref var operand = ref operands[i];
 
-                if (TryGetAnnoation(operand.term, out var lhs, out var tail))
+                if (TryGetAnnoation(operand.expr, out var lhs, out var tail))
                 {
                     if (operand.inverted)
                     {
-                        throw Error(operand.term.RepresentativeToken, "Annoation can't be made on inverted operator");
+                        throw Error(operand.expr.RepresentativeToken, "Annoation can't be made on inverted operator");
                     }
 
-                    operands[i].term = lhs;
+                    operands[i].expr = lhs;
                 }
             }
         }
@@ -141,7 +140,7 @@ public class ContextBuilder
         return sequence;
     }
 
-    SequenceTerm CreateSequence(SyntaxChain chain)
+    SequenceExpression CreateSequence(SyntaxChain chain)
     {
         var constituents = chain.constituents;
 
@@ -155,7 +154,7 @@ public class ContextBuilder
 
         for (var i = 0; i < n; ++i)
         {
-            var (term, opToken) = constituents[i];
+            var (expr, opToken) = constituents[i];
             ref var item = ref items[i];
 
             item.opToken = opToken;
@@ -222,7 +221,7 @@ public class ContextBuilder
                 }
             }
 
-            item.term = Create(term);
+            item.expr = Create(expr);
         }
 
         if (haveFunctional + haveRelation > 1)
@@ -232,30 +231,30 @@ public class ContextBuilder
 
         if (functional is not null)
         {
-            var operands = new (Boolean inverted, Term term)[n];
+            var operands = new (Boolean inverted, Expression expr)[n];
 
             for (var i = 0; i < n; ++i)
             {
                 ref var item = ref items[i];
                 ref var target = ref operands[i];
 
-                if (!functional.IsBoolean && item.term is RelationalTerm)
+                if (!functional.IsBoolean && item.expr is RelationalExpression)
                 {
-                    // A relational term inside a domain functional one is an annotation
+                    // A relational expression inside a domain functional one is an annotation
 
-                    item.term = UnwrapAnnotation(item.term);
+                    item.expr = UnwrapAnnotation(item.expr);
 
-                    if (item.term is RelationalTerm)
+                    if (item.expr is RelationalExpression)
                     {
-                        throw Error(item.term.RepresentativeToken, "Relational sequences can't be nested twice");
+                        throw Error(item.expr.RepresentativeToken, "Relational sequences can't be nested twice");
                     }
                 }
 
-                target.term = item.term!;
+                target.expr = item.expr!;
                 target.inverted = item.inverted;
             }
 
-            return new FunctionalTerm { Functional = functional, Operands = operands, Precedence = functional.Precedence };
+            return new FunctionalExpression { Functional = functional, Operands = operands, Precedence = functional.Precedence };
         }
         else if (haveRelation > 0)
         {
@@ -273,7 +272,7 @@ public class ContextBuilder
                     throw Error(item.opToken, "Operator is not a relation");
                 }
 
-                target.rhs = item.term!;
+                target.rhs = item.expr!;
                 target.relation = relation;
                 target.conversed = item.conversed;
 
@@ -287,9 +286,9 @@ public class ContextBuilder
                 }
             }
 
-            return new RelationalTerm
+            return new RelationalExpression
             {
-                FirstTerm = items[0].term!,
+                FirstExpression = items[0].expr!,
                 Tail = tail,
                 Precedence = precedence,
                 IsBoolean = precedence == guide.BooleanRelationPrecedence
@@ -301,53 +300,53 @@ public class ContextBuilder
         }
     }
 
-    QuantizationTerm CreateQuantization(SyntaxQuantization quantization)
+    QuantizationExpression CreateQuantization(SyntaxQuantization quantization)
     {
         if (!guide.IsQuantizationSymbol(quantization.token.TokenSpan, out var precedence))
         {
             throw Error(quantization.token, "Symbol is not a quantization");
         }
 
-        if (quantization.head is not SyntaxChain syntaxTerm)
+        if (quantization.head is not SyntaxChain syntaxExpression)
         {
             throw Error(quantization.GetRepresentativeToken(), "Body of quantization must be a relationship or list of relationships");
         }
 
-        var syntaxHead = syntaxTerm;
+        var syntaxHead = syntaxExpression;
 
-        if (syntaxTerm.precedence < 0)
+        if (syntaxExpression.precedence < 0)
         {
-            var firstNonCommaI = syntaxTerm.constituents.FindIndex(c => c.op.cls != InputCharClass.Comma);
+            var firstNonCommaI = syntaxExpression.constituents.FindIndex(c => c.op.cls != InputCharClass.Comma);
 
             if (firstNonCommaI >= 0)
             {
-                var firstNonCommaOp = syntaxTerm.constituents[firstNonCommaI].op;
+                var firstNonCommaOp = syntaxExpression.constituents[firstNonCommaI].op;
 
                 throw Error(firstNonCommaOp, "Only commas are allowed to group multiple relationships together");
             }
 
-            var firstConstituent = syntaxTerm.constituents[0];
+            var firstConstituent = syntaxExpression.constituents[0];
 
             if (firstConstituent.item is SyntaxChain innerRelationship)
             {
-                syntaxTerm = innerRelationship;
+                syntaxExpression = innerRelationship;
             }
             else
             {
-                throw Error(firstConstituent.op, "Preceding term must be a relationship");
+                throw Error(firstConstituent.op, "Preceding expression must be a relationship");
             }
         }
 
-        if (syntaxTerm.precedence != 0)
+        if (syntaxExpression.precedence != 0)
         {
-            throw Error(syntaxTerm.constituents[0].op, "Term must be a relation");
+            throw Error(syntaxExpression.constituents[0].op, "Expression must be a relation");
         }
-        else if (syntaxTerm.constituents.Count > 2)
+        else if (syntaxExpression.constituents.Count > 2)
         {
-            throw Error(syntaxTerm.constituents[0].op, "Term must be a simple relation");
+            throw Error(syntaxExpression.constituents[0].op, "Expression must be a simple relation");
         }
 
-        if (syntaxTerm.constituents[0].item is SyntaxAtom atom)
+        if (syntaxExpression.constituents[0].item is SyntaxAtom atom)
         {
             var symbol = AddSymbol(atom, quantization.body.quantizationDepth);
 
@@ -357,14 +356,14 @@ public class ContextBuilder
 
                 var body = Create(quantization.body);
 
-                if (precedence > 0 && body is RelationalTerm relationalTerm)
+                if (precedence > 0 && body is RelationalExpression relationalExpression)
                 {
                     // Relations in a domain quantification's body are annotations.
 
-                    body = UnwrapAnnotation(relationalTerm);
+                    body = UnwrapAnnotation(relationalExpression);
                 }
 
-                return new QuantizationTerm
+                return new QuantizationExpression
                 {
                     QuantizationSymbol = quantization.token.TokenString,
                     Precedence = precedence,
@@ -380,11 +379,11 @@ public class ContextBuilder
         }
         else
         {
-            throw Error(syntaxTerm.constituents[1].op, "Left side of first relationship must be the to-be-quantized symbol");
+            throw Error(syntaxExpression.constituents[1].op, "Left side of first relationship must be the to-be-quantized symbol");
         }
     }
 
-    public Term Create(SyntaxNode source) => source switch
+    public Expression Create(SyntaxNode source) => source switch
     {
         SyntaxAtom atom => CreateAtom(atom),
         SyntaxQuantization quantization => CreateQuantization(quantization),

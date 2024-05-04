@@ -3,22 +3,22 @@
 namespace TestSuite;
 
 [TestClass]
-public class TermTests
+public class ExpressionTests
 {
     [TestMethod]
     public void TestInterchangeability()
     {
         var parser = new Parser();
 
-        var builder = new ContextBuilder();
+        var builder = new SyntaxAdopter();
 
-        Term Parse(String input)
+        Expression Parse(String input)
         {
             var syntax = parser.Parse(input);
 
-            var term = builder.Create(syntax);
+            var expr = builder.Create(syntax);
 
-            return term;
+            return expr;
         }
 
         String[][] groups = [
@@ -42,7 +42,7 @@ public class TermTests
             [ "∑ x∊ℚ: ∑ y∊ℝ: /x/y" ],
         ];
 
-        var terms = new HashSet<Term>();
+        var terms = new HashSet<Expression>();
 
         for (var i = 0; i < groups.Length; ++i)
         {
