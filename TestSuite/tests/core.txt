@@ -1,7 +1,8 @@
 ﻿#claim: ∀ xϵR: x*o=o;
-	#take x:
-		x*o=x*(o+o)=x*o+x*o;
-		d-d=o;
+  #take x:
+    x*o=x*(o+o)=x*o+x*o;
+    #let d = x*o.
+    d-d=o;
 		d-d=(d+d)-d=d+(d-d)=d
-	.
+  .
 .
