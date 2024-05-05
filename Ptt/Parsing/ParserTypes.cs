@@ -14,6 +14,7 @@ public enum InputCharClass
 
     Eof,
 
+    Hash,
     Semikolon,
     Colon,
     Dot,
@@ -95,6 +96,7 @@ public static class InputCharClassExtensions
         switch (cls)
         {
             case InputCharClass.SymbolLetter:
+            case InputCharClass.Hash:
             case InputCharClass.Semikolon:
             case InputCharClass.Colon:
             case InputCharClass.Dot:
@@ -106,6 +108,18 @@ public static class InputCharClassExtensions
                 return false;
         }
     }
+}
+
+public enum DirectiveType
+{
+    Unknown,
+    Section,
+    Claim,
+    Take
+}
+
+public static class DirectiveTypeExtensions
+{
 }
 
 public class ParsingException : Exception
@@ -125,13 +139,9 @@ public enum SyntaxNodeStringificationFlags
 
 public abstract class SyntaxNode
 {
-    public abstract Boolean IsEmpty { get; }
+    public virtual Boolean IsEmpty => false;
 
     public abstract InputToken GetRepresentativeToken();
-
-    public required Int32 quantizationDepth;
-
-    public Boolean isAnnotation;
 
     public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
 
@@ -140,7 +150,14 @@ public abstract class SyntaxNode
     public override String ToString() => ToString(SyntaxNodeStringificationFlags.None);
 }
 
-public class SyntaxEmpty : SyntaxNode
+public abstract class SyntaxExpression : SyntaxNode
+{
+    public required Int32 quantizationDepth;
+
+    public Boolean isAnnotation;
+}
+
+public class SyntaxEmpty : SyntaxExpression
 {
     public required InputToken token;
 
@@ -151,9 +168,27 @@ public class SyntaxEmpty : SyntaxNode
     public override String ToString(SyntaxNodeStringificationFlags flags) => "";
 }
 
-public class SyntaxChain : SyntaxNode
+public class SyntaxDirective : SyntaxNode
 {
-    public required List<(SyntaxNode item, InputToken op)> constituents;
+    public required InputToken nameToken;
+
+    public required InputToken dotToken;
+
+    public required SyntaxExpression? expr;
+
+    public required SyntaxNode body;
+
+    public override InputToken GetRepresentativeToken() => nameToken;
+
+    public override String ToString(SyntaxNodeStringificationFlags flags)
+    {
+        return $"#{nameToken.TokenString}: {body.ToString(flags)}";
+    }
+}
+
+public class SyntaxSequence : SyntaxExpression
+{
+    public required List<(SyntaxExpression item, InputToken op)> constituents;
 
     public required Double precedence;
 
@@ -188,7 +223,7 @@ public class SyntaxChain : SyntaxNode
     public override InputToken GetRepresentativeToken() => constituents[0].op;
 }
 
-public class SyntaxAtom : SyntaxNode
+public class SyntaxAtom : SyntaxExpression
 {
     public required InputToken token;
 
@@ -199,14 +234,14 @@ public class SyntaxAtom : SyntaxNode
     public override InputToken GetRepresentativeToken() => token;
 }
 
-public class SyntaxQuantization : SyntaxNode
+public class SyntaxQuantization : SyntaxExpression
 {
     public required InputToken token;
 
     public required Double precedence;
 
-    public required SyntaxNode head;
-    public required SyntaxNode body;
+    public required SyntaxExpression head;
+    public required SyntaxExpression body;
 
     public Boolean IsBraceExpression => token.cls == InputCharClass.OpeningBrace;
 

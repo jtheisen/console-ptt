@@ -4,7 +4,7 @@ namespace TestSuite;
 
 public static class TestExtensions
 {
-    public static SyntaxNode Parse(this Parser parser, IEnumerable<InputToken> input)
+    public static SyntaxExpression Parse(this Parser parser, IEnumerable<InputToken> input)
     {
         var enumerator = input.Where(t => t.cls.IsSubstantial()).GetEnumerator();
 
@@ -36,7 +36,7 @@ public static class TestExtensions
         return lines;
     }
 
-    public static SyntaxNode Parse(this Parser parser, String input)
+    public static SyntaxExpression Parse(this Parser parser, String input)
         => parser.Parse(parser.Tokenize(input.SplitLines()));
 
 }

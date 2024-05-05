@@ -112,7 +112,7 @@ public class SyntaxAdopter
         }
     }
 
-    SequenceExpression CreateSequence(SyntaxChain chain)
+    SequenceExpression CreateSequence(SyntaxSequence chain)
     {
         var constituents = chain.constituents;
 
@@ -284,7 +284,7 @@ public class SyntaxAdopter
             throw Error(quantization.token, "Symbol is not a quantization");
         }
 
-        if (quantization.head is not SyntaxChain syntaxExpression)
+        if (quantization.head is not SyntaxSequence syntaxExpression)
         {
             throw Error(quantization.GetRepresentativeToken(), "Body of quantization must be a relationship or list of relationships");
         }
@@ -304,7 +304,7 @@ public class SyntaxAdopter
 
             var firstConstituent = syntaxExpression.constituents[0];
 
-            if (firstConstituent.item is SyntaxChain innerRelationship)
+            if (firstConstituent.item is SyntaxSequence innerRelationship)
             {
                 syntaxExpression = innerRelationship;
             }
@@ -360,13 +360,13 @@ public class SyntaxAdopter
         }
     }
 
-    public Expression Create(SyntaxNode source)
+    public Expression Create(SyntaxExpression source)
     {
         Expression result = source switch
         {
             SyntaxAtom atom => CreateAtom(atom),
             SyntaxQuantization quantization => CreateQuantization(quantization),
-            SyntaxChain chain => CreateSequence(chain),
+            SyntaxSequence chain => CreateSequence(chain),
             _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
         };
 
