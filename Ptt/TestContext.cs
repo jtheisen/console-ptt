@@ -72,26 +72,38 @@ public class Relation : OperatorConfiguration
 
     public required RelationFlags Flags { get; init; }
 
-    public String GetName(Boolean reversed, Boolean negated)
+    public String GetName(RelationshipFlags flags)
+    {
+        return GetName(flags.conversed, flags.negated);
+    }
+
+    public String GetName(Boolean conversed, Boolean negated)
     {
         if (negated)
         {
-            return $"!{GetName(reversed, false)}";
+            return $"!{GetName(conversed, false)}";
         }
         else
         {
-            return reversed ? Reversed : Name;
+            return conversed ? Reversed : Name;
         }
     }
+}
+
+public struct RelationshipFlags
+{
+    public Boolean conversed;
+
+    public Boolean negated;
+
+    public Boolean target;
 }
 
 public struct RelationshipTail
 {
     public Relation relation;
 
-    public Boolean conversed;
-
-    public Boolean negated;
+    public RelationshipFlags flags;
 
     public Expression rhs;
 }

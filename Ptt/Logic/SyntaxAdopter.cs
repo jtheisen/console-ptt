@@ -89,9 +89,14 @@ public class SyntaxAdopter
 
     Boolean TryGetAnnotation(Expression expr, [NotNullWhen(true)] out Expression? lhs, out RelationshipTail tail)
     {
-        if (expr is RelationshipExpression relational)
+        if (expr is RelationalExpression relational)
         {
-            var relationshipTail = relational.Tail;
+            if (relational.Tail.Length > 1)
+            {
+                throw Error(expr.RepresentativeToken, "Annotations can't be relational sequences with more than two operands");
+            }
+
+            var relationshipTail = relational.Tail[0];
 
             lhs = relational.LeftExpression;
             tail = relationshipTail;
@@ -205,13 +210,18 @@ public class SyntaxAdopter
                 ref var item = ref items[i];
                 ref var target = ref operands[i];
 
-                if (!functional.IsBoolean && item.expr is RelationshipExpression)
+                if (!functional.IsBoolean && item.expr is RelationalExpression relationalExpression)
                 {
                     // A relational expression inside a domain functional one is an annotation
 
+                    if (relationalExpression.Tail.Length > 1)
+                    {
+                        throw Error(relationalExpression.RepresentativeToken, "Annotations can't be relational sequences with more than two operands");
+                    }
+
                     item.expr = UnwrapAnnotation(item.expr);
 
-                    if (item.expr is RelationshipExpression)
+                    if (item.expr is RelationalExpression)
                     {
                         throw Error(item.expr.RepresentativeToken, "Relational sequences can't be nested twice");
                     }
@@ -241,7 +251,7 @@ public class SyntaxAdopter
 
                 target.rhs = item.expr!;
                 target.relation = relation;
-                target.conversed = item.conversed;
+                target.flags = new RelationshipFlags { negated = item.negated, conversed = item.conversed };
 
                 if (precedence == Double.MinValue)
                 {
@@ -253,29 +263,13 @@ public class SyntaxAdopter
                 }
             }
 
-            if (n > 2)
+            return new RelationalExpression
             {
-                return new MultiRelationalExpression
-                {
-                    LeftExpression = items[0].expr!,
-                    Tail = tail,
-                    Precedence = precedence,
-                    IsBoolean = precedence == guide.BooleanRelationPrecedence
-                };
-            }
-            else if (n == 2)
-            {
-                var t = tail[0];
-
-                return new RelationshipExpression(items[0].expr!, t.relation, t.negated, t.conversed, t.rhs)
-                {
-                    Precedence = precedence
-                };
-            }
-            else
-            {
-                throw new AssertionException("Unexpected missing right hand expression");
-            }
+                LeftExpression = items[0].expr!,
+                Tail = tail,
+                Precedence = precedence,
+                IsBoolean = precedence == guide.BooleanRelationPrecedence
+            };
         }
         else
         {
@@ -339,7 +333,7 @@ public class SyntaxAdopter
 
                 var body = Create(quantization.body);
 
-                if (precedence > 0 && body is RelationshipExpression relationalExpression)
+                if (precedence > 0 && body is RelationalExpression relationalExpression)
                 {
                     // Relations in a domain quantification's body are annotations.
 

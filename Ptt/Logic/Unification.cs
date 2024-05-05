@@ -19,7 +19,7 @@ public class Rule
     Dictionary<Symbol, RelationshipTail> universials;
     Dictionary<Symbol, RelationshipTail> existentials;
 
-    public required MultiRelationalExpression Relationship { get; init; }
+    public required RelationalExpression Relationship { get; init; }
 
 
 }
@@ -184,27 +184,30 @@ public class Unifier
                 throw new NotImplementedException();
             }
         }
-        else if (source is RelationshipExpression relationshipExpression)
+        else if (source is RelationalExpression relationalExpression)
         {
-            if (target is not RelationshipExpression targetRelationshipExpression)
+            if (target is not RelationalExpression targetRelationshipExpression)
             {
                 return null;
             }
 
-            var (sourceLhs, sourceRelation, sourceNegated, sourceConversed, sourceRhs) = relationshipExpression;
-            var (targetLhs, targetRelation, targetNegated, targetConversed, targetRhs) = targetRelationshipExpression;
+            if (!relationalExpression.DeconstructRelationship(out var sourceLhs, out var sourceRelation, out var sourceFlags, out var sourceRhs) ||
+                !relationalExpression.DeconstructRelationship(out var targetLhs, out var targetRelation, out var targetFlags, out var targetRhs))
+            {
+                return null;
+            }
 
             if (sourceRelation.Name != targetRelation.Name)
             {
                 return null;
             }
 
-            if (sourceNegated != targetNegated)
+            if (sourceFlags.negated != targetFlags.negated)
             {
                 return null;
             }
 
-            if (sourceConversed != targetConversed)
+            if (sourceFlags.conversed != targetFlags.conversed)
             {
                 var temp = sourceLhs;
                 sourceLhs = sourceRhs;
@@ -216,8 +219,20 @@ public class Unifier
             if ((resultLhs = UnifyCore(sourceLhs, targetLhs)) is not null &&
                 (resultRhs = UnifyCore(sourceRhs, targetRhs)) is not null)
             {
-                return new RelationshipExpression(resultLhs, sourceRelation, sourceNegated, targetConversed, resultRhs)
+                return new RelationalExpression
                 {
+                    LeftExpression = resultLhs,
+                    Tail = [ new RelationshipTail
+                    {
+                        flags = new RelationshipFlags
+                        {
+                            negated = sourceFlags.negated,
+                            conversed = targetFlags.conversed
+                        },
+                        relation = sourceRelation,
+                        rhs = resultRhs
+                    }],
+                    IsBoolean = sourceRelation.IsBoolean,
                     Precedence = sourceRelation.Precedence
                 };
             }
@@ -226,7 +241,7 @@ public class Unifier
 
             return null;
         }
-        else if (source is MultiRelationalExpression)
+        else if (source is RelationalExpression)
         {
             // Unifying multi-relational expressions is not supported
 

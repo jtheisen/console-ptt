@@ -142,7 +142,7 @@ public abstract class SequenceExpression : Expression
     }
 }
 
-public class MultiRelationalExpression : SequenceExpression
+public class RelationalExpression : SequenceExpression
 {
     public required Expression LeftExpression { get; init; }
 
@@ -160,48 +160,31 @@ public class MultiRelationalExpression : SequenceExpression
 
         foreach (var i in Tail)
         {
-            yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
+            yield return (i.relation.GetName(i.flags), i.rhs);
         }
     }
-}
 
-public class RelationshipExpression : SequenceExpression
-{
-    RelationshipTail tail;
-
-    public Expression LeftExpression { get; }
-
-    public RelationshipTail Tail => tail;
-
-    public Expression RightExpression => tail.rhs;
-
-    public override Boolean IsUnordered => tail.relation.Flags.HasFlag(RelationFlags.Symmetric);
-
-    public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
+    public Boolean DeconstructRelationship([NotNullWhen(true)] out Expression? lhs, [NotNullWhen(true)] out Relation? relation, out RelationshipFlags flags, [NotNullWhen(true)] out Expression? rhs)
     {
-        yield return (null, LeftExpression);
+        if (Tail.Length != 1)
+        {
+            rhs = lhs = null;
+            relation = null;
+            flags = default;
 
-        var i = Tail;
+            return false;
+        }
+        else
+        {
+            var tail = Tail[0];
 
-        yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
-    }
+            lhs = LeftExpression;
+            flags = tail.flags;
+            relation = tail.relation;
+            rhs = tail.rhs;
 
-    public RelationshipExpression(Expression lhs, Relation relation, Boolean negated, Boolean conversed, Expression rhs)
-    {
-        LeftExpression = lhs;
-        tail.relation = relation;
-        tail.negated = negated;
-        tail.conversed = conversed;
-        tail.rhs = rhs;
-    }
-
-    public void Deconstruct(out Expression lhs, out Relation relation, out Boolean negated, out Boolean conversed, out Expression rhs)
-    {
-        lhs = RightExpression;
-        negated = tail.negated;
-        conversed = tail.conversed;
-        relation = tail.relation;
-        rhs = tail.rhs;
+            return true;
+        }
     }
 }
 
