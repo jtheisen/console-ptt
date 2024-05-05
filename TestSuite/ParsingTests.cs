@@ -112,7 +112,7 @@ public class ParsingTests
         }
         else
         {
-            Assert.ThrowsException<ParsingException>(() => parser.ParseExpression(enumerator));
+            Assert.ThrowsException<ParsingException>(() => parser.ParseExpression(enumerator, outerPrecedence: Double.MinValue));
         }
     }
 }

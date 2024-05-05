@@ -14,7 +14,7 @@ public class ExpressionTests
 
         Expression Parse(String input)
         {
-            var syntax = parser.Parse(input);
+            var syntax = parser.ParseExpression(input);
 
             var expr = builder.Create(syntax);
 

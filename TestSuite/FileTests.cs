@@ -1,4 +1,6 @@
-﻿namespace TestSuite;
+﻿using Ptt;
+
+namespace TestSuite;
 
 [TestClass]
 public class FileTests
@@ -21,5 +23,9 @@ public class FileTests
         var filePath = filePaths[fileName];
 
         var content = File.ReadAllText(filePath);
+
+        var parser = new Parser();
+
+        parser.ParseDocument(content);
     }
 }

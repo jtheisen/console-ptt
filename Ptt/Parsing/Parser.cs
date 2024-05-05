@@ -243,17 +243,48 @@ public class Parser
         return inner;
     }
 
-    public SyntaxNode ParseContent(IEnumerator<InputToken> input)
+    public SyntaxBlockContent ParseContent(IEnumerator<InputToken> input)
     {
+        var items = new List<SyntaxBlockItem>();
+
         var token = input.Current;
 
-        if (token.cls == InputCharClass.Hash)
+        SyntaxBlockContent GetResult()
         {
-            return ParseDirective(input);
+            return new SyntaxBlockContent
+            {
+                items = items
+            };
         }
-        else
+
+        while (true)
         {
-            return ParseExpression(input);
+            switch (token.cls)
+            {
+                case InputCharClass.Hash:
+                    items.Add(ParseDirectiveBlock(input));
+                    break;
+                case InputCharClass.Semikolon:
+                    Increment(ref input);
+                    break;
+                case InputCharClass.Eof:
+                case InputCharClass.Dot:
+                    return GetResult();
+                case InputCharClass.Colon:
+                case InputCharClass.ClosingBrace:
+                case InputCharClass.ClosingBracket:
+                case InputCharClass.Space:
+                case InputCharClass.Comment:
+                case InputCharClass.Unset:
+                case InputCharClass.Unknown:
+                case InputCharClass.Unsupported:
+                    throw Error(token, "Unexpected token in block content");
+                default:
+                    items.Add(ParseExpression(input, outerPrecedence: Double.MinValue));
+                    break;
+            }
+
+            token = input.Current;
         }
     }
 
@@ -279,7 +310,7 @@ public class Parser
         return Increment(ref input);
     }
 
-    public SyntaxDirective ParseDirective(IEnumerator<InputToken> input)
+    public SyntaxDirectiveBlock ParseDirectiveBlock(IEnumerator<InputToken> input)
     {
         var token = input.Current;
 
@@ -296,7 +327,7 @@ public class Parser
 
         Increment(ref input);
 
-        SyntaxDirective ParseBody(SyntaxExpression? expr)
+        SyntaxDirectiveBlock ParseBody(SyntaxExpression? expr)
         {
             var body = ParseContent(input);
 
@@ -305,8 +336,11 @@ public class Parser
                 throw Error(nameToken, $"The directive did not terminate on a dot");
             }
 
-            return new SyntaxDirective
+            Increment(ref input);
+
+            return new SyntaxDirectiveBlock
             {
+                type = type,
                 nameToken = nameToken,
                 dotToken = token,
                 body = body,
@@ -322,7 +356,7 @@ public class Parser
             case DirectiveType.Claim:
                 ConsumeExpectation(input, InputCharClass.Colon, "A claim directive must be followed by a colon");
                 var claimExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
-                ConsumeExpectation(input, InputCharClass.Colon, "A claim directive must be followed by a semicolon after its claim");
+                ConsumeExpectation(input, InputCharClass.Semikolon, "A claim directive must be followed by a semicolon after its claim");
                 return ParseBody(claimExpression);
             case DirectiveType.Take:
                 var takenExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
@@ -333,7 +367,7 @@ public class Parser
         }
     }
 
-    public SyntaxExpression ParseExpression(IEnumerator<InputToken> input, SyntaxExpression? prefix = null, Double outerPrecedence = 0, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
+    public SyntaxExpression ParseExpression(IEnumerator<InputToken> input, Double outerPrecedence, SyntaxExpression? prefix = null, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
     {
         var nextToken = input.Current;
 
@@ -399,13 +433,10 @@ public class Parser
                 case InputCharClass.Unknown:
                 case InputCharClass.Space:
                 case InputCharClass.Comment:
-                    Throw(nextToken, $"Not expected to have token class {nextToken.cls} in the input stream for this method");
+                    Throw(nextToken, $"Not expected to have token '{nextToken}' of class {nextToken.cls} in the input stream for this method");
                     break;
                 case InputCharClass.Unsupported:
                     Throw(nextToken, "Unsupported character");
-                    break;
-                case InputCharClass.Semikolon:
-                    NotYetImplemented();
                     break;
                 case InputCharClass.Letter:
                 case InputCharClass.SymbolLetter:
@@ -524,6 +555,8 @@ public class Parser
                         }
                     }
                     break;
+                case InputCharClass.Hash:
+                case InputCharClass.Semikolon:
                 case InputCharClass.Colon:
                 case InputCharClass.Dot:
                 case InputCharClass.Eof:
