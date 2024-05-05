@@ -14,7 +14,6 @@ public enum InputCharClass
 
     Eof,
 
-    Comma,
     Semikolon,
     Colon,
     Dot,
@@ -96,7 +95,6 @@ public static class InputCharClassExtensions
         switch (cls)
         {
             case InputCharClass.SymbolLetter:
-            case InputCharClass.Comma:
             case InputCharClass.Semikolon:
             case InputCharClass.Colon:
             case InputCharClass.Dot:
@@ -132,6 +130,8 @@ public abstract class SyntaxNode
     public abstract InputToken GetRepresentativeToken();
 
     public required Int32 quantizationDepth;
+
+    public Boolean isAnnotation;
 
     public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
 

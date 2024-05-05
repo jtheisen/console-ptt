@@ -106,7 +106,7 @@ public class ParsingTests
 
         if (expectedEncoded is not null)
         {
-            var result = parser.ParseExpression(enumerator);
+            var result = parser.ParseExpression(enumerator, outerPrecedence: Double.MinValue);
 
             Assert.AreEqual(expectedEncoded, result.ToString(flags ?? SyntaxNodeStringificationFlags.None));
         }

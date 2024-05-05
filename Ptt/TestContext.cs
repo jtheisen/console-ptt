@@ -4,7 +4,7 @@ namespace Ptt;
 
 public interface IParserGuide
 {
-    Double GetPrecedence(ReadOnlySpan<Char> op);
+    Double GetOperatorPrecedence(InputToken op);
     Boolean IsSymbolLetter(Char c, out Double precedence);
     Boolean IsQuantizationSymbol(ReadOnlySpan<Char> op, out Double precedence);
     Boolean IsBooleanQuantizationSymbol(ReadOnlySpan<Char> op);
@@ -160,7 +160,7 @@ public class TestContext : IParserGuide, IContext
         AddFunctional(new Functional("*", "/") { IsAssociative = true, IsCommutative = true });
         AddFunctional(new Functional("+", "-") { IsAssociative = true, IsCommutative = true });
 
-        BooleanRelationPrecedence = GetPrecedence("⇒".AsSpan());
+        BooleanRelationPrecedence = GetOperatorPrecedence('⇒');
 
         AddRelations(BooleanRelationSymbols, BooleanRelationPrecedence);
         AddRelations(DomainRelationSymbols, 0);
@@ -168,7 +168,7 @@ public class TestContext : IParserGuide, IContext
         AddSymbols();
     }
 
-    Double? GetPrecedenceForOperatorCharacter(Char chr)
+    Double? GetOperatorPrecedenceOrNot(Char chr)
     {
         if (DomainRelationSymbols.IndexOf(chr) != -1)
         {
@@ -183,13 +183,38 @@ public class TestContext : IParserGuide, IContext
         return null;
     }
 
-    public Double GetPrecedence(ReadOnlySpan<Char> op)
+    Double GetOperatorPrecedence(Char chr)
+    {
+        return GetOperatorPrecedenceOrNot(chr) ?? throw new AssertionException("Unknown operator");
+    }
+
+    public Double GetOperatorPrecedence(String op)
     {
         if (op.Length == 1)
         {
             var chr = op[0];
 
-            if (GetPrecedenceForOperatorCharacter(chr) is Double precedence)
+            if (GetOperatorPrecedenceOrNot(chr) is Double precedence)
+            {
+                return precedence;
+            }
+        }
+
+        throw new Exception($"Unknown operator {new String(op)}");
+    }
+
+    public Double GetOperatorPrecedence(InputToken inputToken)
+    {
+        if (!inputToken.TryGetOperatorName(out var op, out _))
+        {
+            throw new AssertionException("Token not an operator");
+        }
+
+        if (op.Length == 1)
+        {
+            var chr = op[0];
+
+            if (GetOperatorPrecedenceOrNot(chr) is Double precedence)
             {
                 return precedence;
             }
@@ -208,7 +233,7 @@ public class TestContext : IParserGuide, IContext
         {
             var pairing = SymbolLetterPrecedencePairings[i];
 
-            if (GetPrecedenceForOperatorCharacter(pairing) is Double p)
+            if (GetOperatorPrecedenceOrNot(pairing) is Double p)
             {
                 precedence = p;
             }
@@ -294,7 +319,7 @@ public class TestContext : IParserGuide, IContext
 
         foreach (var op in functional.GetOperators())
         {
-            var p = GetPrecedence(op.AsSpan());
+            var p = GetOperatorPrecedence(op);
 
             if (precedence is Double existingPrecedence)
             {

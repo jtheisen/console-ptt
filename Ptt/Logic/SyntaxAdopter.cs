@@ -70,9 +70,9 @@ public class SyntaxAdopter
 
     Expression UnwrapAnnotation(Expression expr)
     {
-        if (TryGetAnnoation(expr, out var lhs, out var tail))
+        if (TryGetAnnotation(expr, out var lhs, out var tail))
         {
-            lhs.Annotation = new ExpressionAnnotation
+            lhs.Annotation = new RelationshipAnnotation
             {
                 Tail = tail
             };
@@ -81,23 +81,20 @@ public class SyntaxAdopter
         }
         else
         {
-            throw new AssertionException("Expected an annotation to unwrap");
+            expr.Annotation = Annotation.Default;
+
+            return expr;
         }
     }
 
-    Boolean TryGetAnnoation(Expression expr, [NotNullWhen(true)] out Expression? lhs, out RelationshipTail tail)
+    Boolean TryGetAnnotation(Expression expr, [NotNullWhen(true)] out Expression? lhs, out RelationshipTail tail)
     {
-        if (expr is RelationalExpression relational)
+        if (expr is RelationshipExpression relational)
         {
             var relationshipTail = relational.Tail;
 
-            if (relationshipTail.Length != 1)
-            {
-                throw Error(expr.RepresentativeToken, "Annotations can't have multiple relations");
-            }
-
-            lhs = relational.FirstExpression;
-            tail = relationshipTail[0];
+            lhs = relational.LeftExpression;
+            tail = relationshipTail;
 
             return true;
         }
@@ -108,36 +105,6 @@ public class SyntaxAdopter
 
             return false;
         }
-    }
-
-    // Do we still need this?
-    SequenceExpression UnwrapSequenceAnnotations(SequenceExpression sequence)
-    {
-        // This function modifies the sequence.
-
-        if (sequence is FunctionalExpression functional)
-        {
-            var operands = functional.Operands;
-
-            var n = operands.Length;
-
-            for (var i = 0; i < n; ++i)
-            {
-                ref var operand = ref operands[i];
-
-                if (TryGetAnnoation(operand.expr, out var lhs, out var tail))
-                {
-                    if (operand.inverted)
-                    {
-                        throw Error(operand.expr.RepresentativeToken, "Annoation can't be made on inverted operator");
-                    }
-
-                    operands[i].expr = lhs;
-                }
-            }
-        }
-
-        return sequence;
     }
 
     SequenceExpression CreateSequence(SyntaxChain chain)
@@ -238,13 +205,13 @@ public class SyntaxAdopter
                 ref var item = ref items[i];
                 ref var target = ref operands[i];
 
-                if (!functional.IsBoolean && item.expr is RelationalExpression)
+                if (!functional.IsBoolean && item.expr is RelationshipExpression)
                 {
                     // A relational expression inside a domain functional one is an annotation
 
                     item.expr = UnwrapAnnotation(item.expr);
 
-                    if (item.expr is RelationalExpression)
+                    if (item.expr is RelationshipExpression)
                     {
                         throw Error(item.expr.RepresentativeToken, "Relational sequences can't be nested twice");
                     }
@@ -254,7 +221,7 @@ public class SyntaxAdopter
                 target.inverted = item.inverted;
             }
 
-            return new FunctionalExpression { Functional = functional, Operands = operands, Precedence = functional.Precedence };
+            return new FunctionalExpression { Functional = functional, OwnOperands = operands, Precedence = functional.Precedence };
         }
         else if (haveRelation > 0)
         {
@@ -286,13 +253,29 @@ public class SyntaxAdopter
                 }
             }
 
-            return new RelationalExpression
+            if (n > 2)
             {
-                FirstExpression = items[0].expr!,
-                Tail = tail,
-                Precedence = precedence,
-                IsBoolean = precedence == guide.BooleanRelationPrecedence
-            };
+                return new MultiRelationalExpression
+                {
+                    LeftExpression = items[0].expr!,
+                    Tail = tail,
+                    Precedence = precedence,
+                    IsBoolean = precedence == guide.BooleanRelationPrecedence
+                };
+            }
+            else if (n == 2)
+            {
+                var t = tail[0];
+
+                return new RelationshipExpression(items[0].expr!, t.relation, t.negated, t.conversed, t.rhs)
+                {
+                    Precedence = precedence
+                };
+            }
+            else
+            {
+                throw new AssertionException("Unexpected missing right hand expression");
+            }
         }
         else
         {
@@ -316,7 +299,7 @@ public class SyntaxAdopter
 
         if (syntaxExpression.precedence < 0)
         {
-            var firstNonCommaI = syntaxExpression.constituents.FindIndex(c => c.op.cls != InputCharClass.Comma);
+            var firstNonCommaI = syntaxExpression.constituents.FindIndex(c => c.op.TokenSpan[0] != ',');
 
             if (firstNonCommaI >= 0)
             {
@@ -356,7 +339,7 @@ public class SyntaxAdopter
 
                 var body = Create(quantization.body);
 
-                if (precedence > 0 && body is RelationalExpression relationalExpression)
+                if (precedence > 0 && body is RelationshipExpression relationalExpression)
                 {
                     // Relations in a domain quantification's body are annotations.
 
@@ -383,13 +366,25 @@ public class SyntaxAdopter
         }
     }
 
-    public Expression Create(SyntaxNode source) => source switch
+    public Expression Create(SyntaxNode source)
     {
-        SyntaxAtom atom => CreateAtom(atom),
-        SyntaxQuantization quantization => CreateQuantization(quantization),
-        SyntaxChain chain => CreateSequence(chain),
-        _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
-    };
+        Expression result = source switch
+        {
+            SyntaxAtom atom => CreateAtom(atom),
+            SyntaxQuantization quantization => CreateQuantization(quantization),
+            SyntaxChain chain => CreateSequence(chain),
+            _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
+        };
+
+        if (source.isAnnotation)
+        {
+            // This is the specifically marked version, likely without a relationship.
+
+            result = UnwrapAnnotation(result);
+        }
+
+        return result;
+    }
 
     Exception Error(InputToken? tokenOrNot, String message)
     {

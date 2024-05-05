@@ -20,8 +20,6 @@ public class Parser
 
         switch (c)
         {
-            case ',':
-                return InputCharClass.Comma;
             case ';':
                 return InputCharClass.Semikolon;
             case ':':
@@ -32,6 +30,7 @@ public class Parser
                 return InputCharClass.OpeningBrace;
             case '}':
                 return InputCharClass.ClosingBrace;
+            case ',':
             case '!':
                 return InputCharClass.Operator;
             default:
@@ -111,7 +110,10 @@ public class Parser
             {
                 var next = AugmentInputCharWithClass(token.line[i]);
 
-                if (next.cls != current.cls || current.cls.IsSingleCharacter())
+                // An ugly hack with the '!': We should better parse this some other way, but operators
+                // are single-character and by now the token already has knowledge about the '!', so
+                // it would be some effort to rework that.
+                if (next.cls != current.cls || (current.cls.IsSingleCharacter() && current.chr != '!'))
                 {
                     token.endI = i;
                     yield return token;
@@ -209,7 +211,22 @@ public class Parser
 
         Increment(ref input);
 
+        var isParens = openingBracketToken.TokenSpan[0] == '(';
+
+        var nextToken = input.Current;
+
+        var isAnnotation = false;
+
+        if (isParens && nextToken.cls == InputCharClass.Colon)
+        {
+            isAnnotation = true;
+
+            Increment(ref input);
+        }
+
         var inner = ParseExpression(input, outerPrecedence: Double.MinValue);
+
+        inner.isAnnotation = isAnnotation;
 
         var closingBracketToken = input.Current;
 
@@ -316,7 +333,6 @@ public class Parser
                         pendingResult = ParseLetters(input);
                     }
                     break;
-                case InputCharClass.Comma:
                 case InputCharClass.Operator:
                     var isFirstOperator = ownPrecedence == outerPrecedence;
 
@@ -324,7 +340,7 @@ public class Parser
                     {
                         // We encoutered an operator for the first time, let's set our precedence.
 
-                        var precedence = guide.GetPrecedence(nextToken.TokenSpan);
+                        var precedence = guide.GetOperatorPrecedence(nextToken);
 
                         if (precedence == outerPrecedence)
                         {
@@ -341,7 +357,7 @@ public class Parser
                         // We already have an expression, now do we take it or is it part of
                         // a more tightly bound parent expression?
 
-                        var newPrecedence = guide.GetPrecedence(nextToken.TokenSpan);
+                        var newPrecedence = guide.GetOperatorPrecedence(nextToken);
 
                         if (newPrecedence <= outerPrecedence && !isFirstOperator)
                         {
@@ -383,7 +399,7 @@ public class Parser
                     {
                         // Two consecutive operators
 
-                        var newPrecedence = guide.GetPrecedence(nextToken.TokenSpan);
+                        var newPrecedence = guide.GetOperatorPrecedence(nextToken);
 
                         if (ownPrecedence == newPrecedence)
                         {

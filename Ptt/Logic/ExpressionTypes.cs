@@ -35,7 +35,7 @@ public abstract class Expression : IEquatable<Expression>
 
     public required Double Precedence { get; init; }
 
-    public ExpressionAnnotation? Annotation { get; set; }
+    public Annotation? Annotation { get; set; }
 
     public InputToken? RepresentativeToken { get; set; }
 
@@ -69,9 +69,26 @@ public abstract class Expression : IEquatable<Expression>
     protected abstract void Render(SmartStringWriter writer, Boolean useIds);
 }
 
-public class ExpressionAnnotation
+public class Annotation
+{
+    public static readonly Annotation Default = new Annotation();
+}
+
+public class RelationshipAnnotation : Annotation
 {
     public RelationshipTail Tail { get; init; }
+}
+
+public class AtomExpression : Expression
+{
+    public required Symbol Symbol { get; init; }
+
+    protected override Int32 EstimateRenderLength() => Symbol.Name.Length;
+
+    protected override void Render(SmartStringWriter writer, Boolean useIds)
+    {
+        writer.Write(useIds ? Symbol.Id : Symbol.Name);
+    }
 }
 
 public struct OperandsComparer : IComparer<(Boolean inverted, Expression expr)>
@@ -125,9 +142,9 @@ public abstract class SequenceExpression : Expression
     }
 }
 
-public class RelationalExpression : SequenceExpression
+public class MultiRelationalExpression : SequenceExpression
 {
-    public required Expression FirstExpression { get; init; }
+    public required Expression LeftExpression { get; init; }
 
     public required RelationshipTail[] Tail { get; init; }
 
@@ -139,7 +156,7 @@ public class RelationalExpression : SequenceExpression
 
     public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
     {
-        yield return (null, FirstExpression);
+        yield return (null, LeftExpression);
 
         foreach (var i in Tail)
         {
@@ -148,19 +165,77 @@ public class RelationalExpression : SequenceExpression
     }
 }
 
+public class RelationshipExpression : SequenceExpression
+{
+    RelationshipTail tail;
+
+    public Expression LeftExpression { get; }
+
+    public RelationshipTail Tail => tail;
+
+    public Expression RightExpression => tail.rhs;
+
+    public override Boolean IsUnordered => tail.relation.Flags.HasFlag(RelationFlags.Symmetric);
+
+    public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
+    {
+        yield return (null, LeftExpression);
+
+        var i = Tail;
+
+        yield return (i.relation.GetName(i.conversed, i.negated), i.rhs);
+    }
+
+    public RelationshipExpression(Expression lhs, Relation relation, Boolean negated, Boolean conversed, Expression rhs)
+    {
+        LeftExpression = lhs;
+        tail.relation = relation;
+        tail.negated = negated;
+        tail.conversed = conversed;
+        tail.rhs = rhs;
+    }
+
+    public void Deconstruct(out Expression lhs, out Relation relation, out Boolean negated, out Boolean conversed, out Expression rhs)
+    {
+        lhs = RightExpression;
+        negated = tail.negated;
+        conversed = tail.conversed;
+        relation = tail.relation;
+        rhs = tail.rhs;
+    }
+}
+
 public class FunctionalExpression : SequenceExpression
 {
+    (Boolean inverted, Expression expr)[]? operands;
+
     public required Functional Functional { get; init; }
 
-    public required (Boolean inverted, Expression expr)[] Operands { get; init; }
+    public required (Boolean inverted, Expression expr)[] OwnOperands { get; init; }
 
     public override Boolean IsUnordered => Functional.IsCommutative;
 
-    IEnumerable<(Boolean inverted, Expression expr)> GetOperands()
+    public (Boolean inverted, Expression expr)[] Operands
+    {
+        get
+        {
+            if (operands is null)
+            {
+                var ops = CalculateOperands().ToList();
+
+                ops.Sort(operandsComparer);
+
+                operands = ops.ToArray();
+            }
+            return operands;
+        }
+    }
+
+    public IEnumerable<(Boolean inverted, Expression expr)> CalculateOperands()
     {
         var functional = Functional;
 
-        foreach (var operand in Operands)
+        foreach (var operand in OwnOperands)
         {
             var (inverted, expr) = operand;
 
@@ -168,7 +243,7 @@ public class FunctionalExpression : SequenceExpression
                 functional == otherFunctional.Functional &&
                 functional.IsAssociative)
             {
-                foreach (var item in otherFunctional.GetOperands())
+                foreach (var item in otherFunctional.Operands)
                 {
                     yield return (item.inverted != inverted, item.expr);
                 }
@@ -180,20 +255,15 @@ public class FunctionalExpression : SequenceExpression
         }
     }
 
-    static OperandsComparer operandsComparer;
+    static OperandsComparer operandsComparer = default;
 
     public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
     {
-        var operands = GetOperands().ToList();
-
-        if (useIds && IsUnordered)
-        {
-            operands.Sort(operandsComparer);
-        }
-
         Boolean isSubsequent = false;
 
-        foreach (var o in operands)
+        var ops = useIds ? Operands : OwnOperands;
+        
+        foreach (var o in ops)
         {
             yield return (isSubsequent ? Functional.GetOpName(o.inverted) : null, o.expr);
 
@@ -231,16 +301,3 @@ public class QuantizationExpression : Expression
         writer.Close();
     }
 }
-
-public class AtomExpression : Expression
-{
-    public required Symbol Symbol { get; init; }
-
-    protected override Int32 EstimateRenderLength() => Symbol.Name.Length;
-
-    protected override void Render(SmartStringWriter writer, Boolean useIds)
-    {
-        writer.Write(useIds ? Symbol.Id : Symbol.Name);
-    }
-}
-
