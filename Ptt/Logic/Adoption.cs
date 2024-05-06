@@ -2,7 +2,7 @@
 
 public class SyntaxAdopter
 {
-    TestContext guide = new TestContext();
+    TestGuide guide = new TestGuide();
 
     Dictionary<String, Symbol> symbols = new Dictionary<String, Symbol>();
 

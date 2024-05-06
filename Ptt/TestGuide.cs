@@ -108,12 +108,12 @@ public struct RelationshipTail
     public Expression rhs;
 }
 
-public interface IContext
+public interface IAdoptionGuide
 {
     Boolean TryResolveOperator(String name, [NotNullWhen(true)] ref OperatorConfiguration? configuration);
 }
 
-public class TestContext : IParserGuide, IContext
+public class TestGuide : IParserGuide, IAdoptionGuide
 {
     static String BooleanPrecedenceOrder = "⇒⇐⇔ ,∨∧ =";
     static String DomainPrecedenceOrder = "+- */ ^";
@@ -137,7 +137,7 @@ public class TestContext : IParserGuide, IContext
 
     public Double BooleanRelationPrecedence { get; }
 
-    public TestContext()
+    public TestGuide()
     {
         precedences = new Dictionary<Char, Double>();
 

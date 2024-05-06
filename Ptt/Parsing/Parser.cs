@@ -4,7 +4,7 @@ namespace Ptt;
 
 public class Parser
 {
-    TestContext guide = new TestContext();
+    TestGuide guide = new TestGuide();
 
     InputCharClass GetInputCharClass(Char c)
     {
