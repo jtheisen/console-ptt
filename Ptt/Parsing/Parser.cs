@@ -325,7 +325,7 @@ public class Parser
 
         var type = GetDirectiveTypeFromName(nameToken);
 
-        Increment(ref input);
+        token = Increment(ref input);
 
         SyntaxDirectiveBlock ParseBody(SyntaxExpression? expr)
         {
@@ -362,6 +362,14 @@ public class Parser
                 var takenExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
                 ConsumeExpectation(input, InputCharClass.Colon, "A take directive must be followed by a colon after the expression");
                 return ParseBody(takenExpression);
+            case DirectiveType.Assert:
+                if (token.cls != InputCharClass.Letter || !Enum.TryParse<AssertionType>(token.TokenString, out var assertionType))
+                {
+                    throw Error(token, "'proven' or 'unproven' expected");
+                }
+                // FIXME: assertion
+
+                break;
             default:
                 throw Error(nameToken, $"Unhandled directive type {nameToken}");
         }

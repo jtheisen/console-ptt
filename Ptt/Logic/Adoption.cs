@@ -1,6 +1,6 @@
 ﻿namespace Ptt;
 
-public class SyntaxAdopter
+public class Adopter
 {
     TestGuide guide = new TestGuide();
 
@@ -51,7 +51,7 @@ public class SyntaxAdopter
         }
     }
 
-    AtomExpression CreateAtom(SyntaxAtom atom)
+    AtomExpression AdoptAtom(SyntaxAtom atom)
     {
         var symbol = GetSymbol(atom);
 
@@ -112,7 +112,7 @@ public class SyntaxAdopter
         }
     }
 
-    SequenceExpression CreateSequence(SyntaxSequence chain)
+    SequenceExpression AdoptSequence(SyntaxSequence chain)
     {
         var constituents = chain.constituents;
 
@@ -193,7 +193,7 @@ public class SyntaxAdopter
                 }
             }
 
-            item.expr = Create(expr);
+            item.expr = Adopt(expr);
         }
 
         if (haveFunctional + haveRelation > 1)
@@ -277,7 +277,7 @@ public class SyntaxAdopter
         }
     }
 
-    QuantizationExpression CreateQuantization(SyntaxQuantization quantization)
+    QuantizationExpression AdoptQuantization(SyntaxQuantization quantization)
     {
         if (!guide.IsQuantizationSymbol(quantization.token.TokenSpan, out var precedence))
         {
@@ -329,9 +329,9 @@ public class SyntaxAdopter
 
             try
             {
-                var head = Create(syntaxHead);
+                var head = Adopt(syntaxHead);
 
-                var body = Create(quantization.body);
+                var body = Adopt(quantization.body);
 
                 if (precedence > 0 && body is RelationalExpression relationalExpression)
                 {
@@ -360,13 +360,13 @@ public class SyntaxAdopter
         }
     }
 
-    public Expression Create(SyntaxExpression source)
+    public Expression Adopt(SyntaxExpression source)
     {
         Expression result = source switch
         {
-            SyntaxAtom atom => CreateAtom(atom),
-            SyntaxQuantization quantization => CreateQuantization(quantization),
-            SyntaxSequence chain => CreateSequence(chain),
+            SyntaxAtom atom => AdoptAtom(atom),
+            SyntaxQuantization quantization => AdoptQuantization(quantization),
+            SyntaxSequence chain => AdoptSequence(chain),
             _ => throw new Exception($"Unexpected syntax node type {source.GetType()}")
         };
 

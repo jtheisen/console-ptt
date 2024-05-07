@@ -115,7 +115,14 @@ public enum DirectiveType
     Unknown,
     Section,
     Claim,
-    Take
+    Take,
+    Assert
+}
+
+public enum AssertionType
+{
+    Proven,
+    Unproven
 }
 
 public static class DirectiveTypeExtensions

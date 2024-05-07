@@ -10,13 +10,13 @@ public class ExpressionTests
     {
         var parser = new Parser();
 
-        var builder = new SyntaxAdopter();
+        var builder = new Adopter();
 
         Expression Parse(String input)
         {
             var syntax = parser.ParseExpression(input);
 
-            var expr = builder.Create(syntax);
+            var expr = builder.Adopt(syntax);
 
             return expr;
         }
