@@ -22,7 +22,9 @@ public class ParsingTests
         "foo|bar")]
     public void TestTokenization(String input, String expected)
     {
-        var parser = new Parser();
+        var guide = new TestGuide();
+
+        var parser = new ExpressionParser { Guide = guide };
 
         var reader = new StringReader(input);
 
@@ -98,7 +100,9 @@ public class ParsingTests
     //[DataRow("", "")]
     public void TestExpressionParsing(String input, String? expectedEncoded, SyntaxNodeStringificationFlags? flags = null)
     {
-        var parser = new Parser();
+        var guide = new TestGuide();
+
+        var parser = new ExpressionParser { Guide = guide };
 
         var enumerator = parser.Tokenize([input]).Where(t => t.cls.IsSubstantial()).GetEnumerator();
 

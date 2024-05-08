@@ -1,12 +1,41 @@
 ﻿namespace Ptt;
 
+public class RuntimeContext
+{
+    public required TestGuide Guide { get; init; }
+}
+
 public class BlockItem
 {
-    ContentBlock? parent;
+    protected RuntimeContext runtime;
 
-    public BlockItem(ContentBlock? parent)
+    protected ContentBlock? parent;
+
+    public BlockItem(RuntimeContext runtime)
+        : this(null, runtime)
     {
-        this.parent = parent;
+    }
+
+    public BlockItem(ContentBlock parent)
+        : this(parent, null)
+    {
+    }
+
+    public BlockItem(ContentBlock? parent, RuntimeContext? runtime)
+    {
+        if (parent is not null)
+        {
+            this.parent = parent;
+            this.runtime = parent.runtime;
+        }
+        else if (runtime is not null)
+        {
+            this.runtime = runtime;
+        }
+        else
+        {
+            throw new AssertionException("Either parent or runtime must be provided");
+        }
     }
 }
 
@@ -18,16 +47,22 @@ public class ContentBlock : BlockItem
 
     public RelationshipsState Relationships => relationships;
 
-    Adopter adopter = new Adopter();
+    Adopter adopter;
 
     List<BlockItem> items;
 
-    public ContentBlock(ContentBlock parent, DirectiveType type)
-        : base(parent)
+    public ContentBlock(RuntimeContext runtime)
+        : this(null, DirectiveType.Unknown, runtime)
+    {
+    }
+
+    public ContentBlock(ContentBlock? parent, DirectiveType type, RuntimeContext? runtime = null)
+        : base(parent, runtime)
     {
         relationships = new RelationshipsState(parent?.relationships);
         items = new();
         this.type = type;
+        adopter = new Adopter { Guide = this.runtime.Guide };
     }
 
     public Expression Adopt(SyntaxExpression expression)
@@ -60,7 +95,7 @@ public class ContentBlock : BlockItem
         return StartSubblock(DirectiveType.Section);
     }
 
-    public void Assert(RelationalExpression expr, Boolean unproven)
+    public void Assert(Expression expr, Boolean unproven)
     {
         foreach (var r in expr.GetRelationships())
         {
@@ -97,47 +132,47 @@ public class Chain : BlockItem
 
 public static class BlockExtensions
 {
-    public static void ProcessContent(this ContentBlock block, SyntaxBlockContent content)
-    {
-        foreach (var item in content.items)
-        {
-            if (item is SyntaxDirectiveBlock directive)
-            {
-                block.ProcessDirective(directive);
-            }
-            else if (item is SyntaxExpression expr)
-            {
-                block.ProcessExpression(expr);
-            }
-            else
-            {
-                throw new AssertionException($"Unknown syntax type '{item.GetType()}'");
-            }
-        }
-    }
+    //public static void ProcessContent(this ContentBlock block, SyntaxBlockContent content)
+    //{
+    //    foreach (var item in content.items)
+    //    {
+    //        if (item is SyntaxDirectiveBlock directive)
+    //        {
+    //            block.ProcessDirective(directive);
+    //        }
+    //        else if (item is SyntaxExpression expr)
+    //        {
+    //            block.ProcessExpression(expr);
+    //        }
+    //        else
+    //        {
+    //            throw new AssertionException($"Unknown syntax type '{item.GetType()}'");
+    //        }
+    //    }
+    //}
 
-    public static void ProcessExpression(this ContentBlock block, SyntaxExpression expr)
-    {
+    //public static void ProcessExpression(this ContentBlock block, SyntaxExpression expr)
+    //{
 
-    }
+    //}
 
-    public static void ProcessDirective(this ContentBlock block, SyntaxDirectiveBlock directive)
-    {
-        switch (directive.type)
-        {
-            case DirectiveType.Section:
-                var section = block.StartSection();
-                section.ProcessContent(directive.body);
-                break;
-            case DirectiveType.Claim:
-                throw new NotImplementedException();
-            case DirectiveType.Take:
-                var assumptions = directive.expr ?? throw new AssertionException($"Proof blocks must contain assumptions");
-                var proof = block.StartProof(block.Adopt(assumptions));
-                proof.ProcessContent(directive.body);
-                break;
-            default:
-                break;
-        }
-    }
+    //public static void ProcessDirective(this ContentBlock block, SyntaxDirectiveBlock directive)
+    //{
+    //    switch (directive.type)
+    //    {
+    //        case DirectiveType.Section:
+    //            var section = block.StartSection();
+    //            section.ProcessContent(directive.body);
+    //            break;
+    //        case DirectiveType.Claim:
+    //            throw new NotImplementedException();
+    //        case DirectiveType.Take:
+    //            var assumptions = directive.expr ?? throw new AssertionException($"Proof blocks must contain assumptions");
+    //            var proof = block.StartProof(block.Adopt(assumptions));
+    //            proof.ProcessContent(directive.body);
+    //            break;
+    //        default:
+    //            break;
+    //    }
+    //}
 }

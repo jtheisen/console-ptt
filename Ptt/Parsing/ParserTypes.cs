@@ -144,63 +144,20 @@ public enum SyntaxNodeStringificationFlags
     ParenBodies = 1
 }
 
-public abstract class SyntaxNode
+public abstract class Syntax
 {
     public virtual Boolean IsEmpty => false;
 
     public abstract InputToken GetRepresentativeToken();
 
-    public static implicit operator Boolean(SyntaxNode self) => !self.IsEmpty;
+    public static implicit operator Boolean(Syntax self) => !self.IsEmpty;
 
     public abstract String ToString(SyntaxNodeStringificationFlags flags);
 
     public override String ToString() => ToString(SyntaxNodeStringificationFlags.None);
 }
 
-public abstract class SyntaxBlockItem : SyntaxNode
-{
-
-}
-
-// This is the parsing root
-public class SyntaxBlockContent : SyntaxNode
-{
-    public required IEnumerable<SyntaxBlockItem> items;
-
-    public override InputToken GetRepresentativeToken()
-    {
-        return items.FirstOrDefault()?.GetRepresentativeToken() ?? default;
-    }
-
-    public override String ToString(SyntaxNodeStringificationFlags flags)
-    {
-        return String.Join($"\n", items.Select(i => i.ToString(flags)));
-    }
-}
-
-public class SyntaxDirectiveBlock : SyntaxBlockItem
-{
-    public required DirectiveType type;
-
-    public required InputToken nameToken;
-
-    public required InputToken dotToken;
-
-    public required SyntaxExpression? expr;
-
-    public required SyntaxBlockContent body;
-
-    public override InputToken GetRepresentativeToken() => nameToken;
-
-    public override String ToString(SyntaxNodeStringificationFlags flags)
-    {
-        return $"#{nameToken.TokenString}: {body.ToString(flags)}";
-    }
-}
-
-// expressions
-
-public abstract class SyntaxExpression : SyntaxBlockItem
+public abstract class SyntaxExpression : Syntax
 {
     public required Int32 quantizationDepth;
 

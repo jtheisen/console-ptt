@@ -2,9 +2,44 @@
 
 namespace Ptt;
 
-public class Parser
+public class InputProcessingBase
 {
-    TestGuide guide = new TestGuide();
+    protected InputToken ConsumeExpectation(IEnumerator<InputToken> input, InputCharClass cls, String message)
+    {
+        if (input.Current.cls != cls)
+        {
+            throw Error(input.Current, message);
+        }
+
+        return Increment(ref input);
+    }
+
+    protected InputToken Increment(ref IEnumerator<InputToken> input)
+    {
+        var token = input.Current;
+
+        if (!input.MoveNext())
+        {
+            Throw(token, "Unexpected end of input");
+        }
+
+        return input.Current;
+    }
+
+    protected ParsingException Error(InputToken token, String message)
+    {
+        return new ParsingException(token.GetContextMessage(message));
+    }
+
+    protected void Throw(InputToken token, String message)
+    {
+        throw Error(token, message);
+    }
+}
+
+public class Tokenizer : InputProcessingBase
+{
+    public required TestGuide Guide { get; init; }
 
     InputCharClass GetInputCharClass(Char c)
     {
@@ -13,7 +48,7 @@ public class Parser
             return InputCharClass.Space;
         }
 
-        if (guide.IsSymbolLetter(c, out _))
+        if (Guide.IsSymbolLetter(c, out _))
         {
             return InputCharClass.SymbolLetter;
         }
@@ -138,12 +173,16 @@ public class Parser
         yield return token;
     }
 
+}
+
+public class ExpressionParser : Tokenizer
+{
     // Parses atoms, quantizations and brace expressions
     public SyntaxExpression ParseLetters(IEnumerator<InputToken> input)
     {
         var firstToken = input.Current;
 
-        var isQuantization = guide.IsQuantizationSymbol(firstToken.TokenSpan, out var ownPrecedence);
+        var isQuantization = Guide.IsQuantizationSymbol(firstToken.TokenSpan, out var ownPrecedence);
 
         var isBraceExpression = firstToken.cls == InputCharClass.OpeningBrace;
 
@@ -243,138 +282,6 @@ public class Parser
         return inner;
     }
 
-    public SyntaxBlockContent ParseContent(IEnumerator<InputToken> input)
-    {
-        var items = new List<SyntaxBlockItem>();
-
-        var token = input.Current;
-
-        SyntaxBlockContent GetResult()
-        {
-            return new SyntaxBlockContent
-            {
-                items = items
-            };
-        }
-
-        while (true)
-        {
-            switch (token.cls)
-            {
-                case InputCharClass.Hash:
-                    items.Add(ParseDirectiveBlock(input));
-                    break;
-                case InputCharClass.Semikolon:
-                    Increment(ref input);
-                    break;
-                case InputCharClass.Eof:
-                case InputCharClass.Dot:
-                    return GetResult();
-                case InputCharClass.Colon:
-                case InputCharClass.ClosingBrace:
-                case InputCharClass.ClosingBracket:
-                case InputCharClass.Space:
-                case InputCharClass.Comment:
-                case InputCharClass.Unset:
-                case InputCharClass.Unknown:
-                case InputCharClass.Unsupported:
-                    throw Error(token, "Unexpected token in block content");
-                default:
-                    items.Add(ParseExpression(input, outerPrecedence: Double.MinValue));
-                    break;
-            }
-
-            token = input.Current;
-        }
-    }
-
-    DirectiveType GetDirectiveTypeFromName(InputToken token)
-    {
-        if (Enum.TryParse<DirectiveType>(token.TokenString, true, out var type))
-        {
-            return type;
-        }
-        else
-        {
-            throw Error(token, "Unkown directive");
-        }
-    }
-
-    InputToken ConsumeExpectation(IEnumerator<InputToken> input, InputCharClass cls, String message)
-    {
-        if (input.Current.cls != cls)
-        {
-            throw Error(input.Current, message);
-        }
-
-        return Increment(ref input);
-    }
-
-    public SyntaxDirectiveBlock ParseDirectiveBlock(IEnumerator<InputToken> input)
-    {
-        var token = input.Current;
-
-        if (token.cls != InputCharClass.Hash) throw new AssertionException("Should have had a # here");
-
-        var nameToken = Increment(ref input);
-
-        if (nameToken.cls != InputCharClass.Letter)
-        {
-            throw Error(nameToken, "A hash character must be followed by a directive name");
-        }
-
-        var type = GetDirectiveTypeFromName(nameToken);
-
-        token = Increment(ref input);
-
-        SyntaxDirectiveBlock ParseBody(SyntaxExpression? expr)
-        {
-            var body = ParseContent(input);
-
-            if (input.Current.cls != InputCharClass.Dot)
-            {
-                throw Error(nameToken, $"The directive did not terminate on a dot");
-            }
-
-            Increment(ref input);
-
-            return new SyntaxDirectiveBlock
-            {
-                type = type,
-                nameToken = nameToken,
-                dotToken = token,
-                body = body,
-                expr = expr
-            };
-        }
-
-        switch (type)
-        {
-            case DirectiveType.Section:
-                ConsumeExpectation(input, InputCharClass.Colon, "A section directive must be followed by a colon");
-                return ParseBody(null);
-            case DirectiveType.Claim:
-                ConsumeExpectation(input, InputCharClass.Colon, "A claim directive must be followed by a colon");
-                var claimExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
-                ConsumeExpectation(input, InputCharClass.Semikolon, "A claim directive must be followed by a semicolon after its claim");
-                return ParseBody(claimExpression);
-            case DirectiveType.Take:
-                var takenExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
-                ConsumeExpectation(input, InputCharClass.Colon, "A take directive must be followed by a colon after the expression");
-                return ParseBody(takenExpression);
-            case DirectiveType.Assert:
-                if (token.cls != InputCharClass.Letter || !Enum.TryParse<AssertionType>(token.TokenString, out var assertionType))
-                {
-                    throw Error(token, "'proven' or 'unproven' expected");
-                }
-                // FIXME: assertion
-
-                break;
-            default:
-                throw Error(nameToken, $"Unhandled directive type {nameToken}");
-        }
-    }
-
     public SyntaxExpression ParseExpression(IEnumerator<InputToken> input, Double outerPrecedence, SyntaxExpression? prefix = null, Boolean stopAfterBracketedExpression = false, Boolean stopOnQuantization = false)
     {
         var nextToken = input.Current;
@@ -451,7 +358,7 @@ public class Parser
                 case InputCharClass.OpeningBrace:
                     if (pendingResult is not null)
                     {
-                        if (guide.IsBooleanQuantizationSymbol(nextToken.TokenSpan))
+                        if (Guide.IsBooleanQuantizationSymbol(nextToken.TokenSpan))
                         {
                             return GetResult();
                         }
@@ -472,7 +379,7 @@ public class Parser
                     {
                         // We encoutered an operator for the first time, let's set our precedence.
 
-                        var precedence = guide.GetOperatorPrecedence(nextToken);
+                        var precedence = Guide.GetOperatorPrecedence(nextToken);
 
                         if (precedence == outerPrecedence)
                         {
@@ -489,7 +396,7 @@ public class Parser
                         // We already have an expression, now do we take it or is it part of
                         // a more tightly bound parent expression?
 
-                        var newPrecedence = guide.GetOperatorPrecedence(nextToken);
+                        var newPrecedence = Guide.GetOperatorPrecedence(nextToken);
 
                         if (newPrecedence <= outerPrecedence && !isFirstOperator)
                         {
@@ -531,7 +438,7 @@ public class Parser
                     {
                         // Two consecutive operators
 
-                        var newPrecedence = guide.GetOperatorPrecedence(nextToken);
+                        var newPrecedence = Guide.GetOperatorPrecedence(nextToken);
 
                         if (ownPrecedence == newPrecedence)
                         {
@@ -579,31 +486,115 @@ public class Parser
             nextToken = input.Current;
         }
     }
+}
 
-    InputToken Increment(ref IEnumerator<InputToken> input)
+public class BlockParser : ExpressionParser
+{
+    public void ParseContent(ContentBlock content, IEnumerator<InputToken> input)
+    {
+        var items = new List<Syntax>();
+
+        var token = input.Current;
+
+        while (true)
+        {
+            switch (token.cls)
+            {
+                case InputCharClass.Hash:
+                    ParseDirectiveBlock(content, input);
+                    break;
+                case InputCharClass.Semikolon:
+                    Increment(ref input);
+                    break;
+                case InputCharClass.Eof:
+                case InputCharClass.Dot:
+                    return;
+                case InputCharClass.Colon:
+                case InputCharClass.ClosingBrace:
+                case InputCharClass.ClosingBracket:
+                case InputCharClass.Space:
+                case InputCharClass.Comment:
+                case InputCharClass.Unset:
+                case InputCharClass.Unknown:
+                case InputCharClass.Unsupported:
+                    throw Error(token, "Unexpected token in block content");
+                default:
+                    items.Add(ParseExpression(input, outerPrecedence: Double.MinValue));
+                    break;
+            }
+
+            token = input.Current;
+        }
+    }
+
+    DirectiveType GetDirectiveTypeFromName(InputToken token)
+    {
+        if (Enum.TryParse<DirectiveType>(token.TokenString, true, out var type))
+        {
+            return type;
+        }
+        else
+        {
+            throw Error(token, "Unkown directive");
+        }
+    }
+
+    protected InputToken ConsumeDot(IEnumerator<InputToken> input)
+    {
+        return ConsumeExpectation(input, InputCharClass.Dot, "The directive did not terminate on a dot");
+    }
+
+    public void ParseDirectiveBlock(ContentBlock content, IEnumerator<InputToken> input)
     {
         var token = input.Current;
 
-        if (!input.MoveNext())
+        if (token.cls != InputCharClass.Hash) throw new AssertionException("Should have had a # here");
+
+        var nameToken = Increment(ref input);
+
+        if (nameToken.cls != InputCharClass.Letter)
         {
-            Throw(token, "Unexpected end of input");
+            throw Error(nameToken, "A hash character must be followed by a directive name");
         }
 
-        return input.Current;
-    }
+        var type = GetDirectiveTypeFromName(nameToken);
 
-    void NotYetImplemented()
-    {
-        throw new NotImplementedException("Not yet implemented");
-    }
+        token = Increment(ref input);
 
-    ParsingException Error(InputToken token, String message)
-    {
-        return new ParsingException(token.GetContextMessage(message));
-    }
-
-    void Throw(InputToken token, String message)
-    {
-        throw Error(token, message);
+        switch (type)
+        {
+            case DirectiveType.Section:
+                ConsumeExpectation(input, InputCharClass.Colon, "A section directive must be followed by a colon");
+                //ParseBody(null);
+                throw new NotImplementedException();
+                break;
+            case DirectiveType.Claim:
+                ConsumeExpectation(input, InputCharClass.Colon, "A claim directive must be followed by a colon");
+                var claimExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
+                ConsumeExpectation(input, InputCharClass.Semikolon, "A claim directive must be followed by a semicolon after its claim");
+                //ParseBody(claimExpression);
+                throw new NotImplementedException();
+                ConsumeDot(input);
+                break;
+            case DirectiveType.Take:
+                var takenExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
+                ConsumeExpectation(input, InputCharClass.Colon, "A take directive must be followed by a colon after the expression");
+                var proof = content.StartProof(content.Adopt(takenExpression));
+                ParseContent(proof, input);
+                ConsumeDot(input);
+                break;
+            case DirectiveType.Assert:
+                if (token.cls != InputCharClass.Letter || !Enum.TryParse<AssertionType>(token.TokenString, true, out var assertionType))
+                {
+                    throw Error(token, "'proven' or 'unproven' expected");
+                }
+                Increment(ref input);
+                var assertionExpression = ParseExpression(input, outerPrecedence: Double.MinValue);
+                content.Assert(content.Adopt(assertionExpression), assertionType == AssertionType.Unproven);
+                ConsumeDot(input);
+                break;
+            default:
+                throw Error(nameToken, $"Unhandled directive type {nameToken}");
+        }
     }
 }

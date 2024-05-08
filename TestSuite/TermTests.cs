@@ -8,15 +8,17 @@ public class ExpressionTests
     [TestMethod]
     public void TestInterchangeability()
     {
-        var parser = new Parser();
+        var guide = new TestGuide();
 
-        var builder = new Adopter();
+        var adopter = new Adopter { Guide = guide };
+
+        var parser = new ExpressionParser { Guide = guide };
 
         Expression Parse(String input)
         {
             var syntax = parser.ParseExpression(input);
 
-            var expr = builder.Adopt(syntax);
+            var expr = adopter.Adopt(syntax);
 
             return expr;
         }

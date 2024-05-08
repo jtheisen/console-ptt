@@ -2,13 +2,13 @@
 
 public class Adopter
 {
-    TestGuide guide = new TestGuide();
+    public required TestGuide Guide { get; init; }
 
     Dictionary<String, Symbol> symbols = new Dictionary<String, Symbol>();
 
     Boolean TryGetSymbol(String name, [NotNullWhen(true)] out Symbol? symbol)
     {
-        return guide.TryGetSymbol(name, out symbol) || symbols.TryGetValue(name, out symbol);
+        return Guide.TryGetSymbol(name, out symbol) || symbols.TryGetValue(name, out symbol);
     }
 
     Symbol GetSymbol(SyntaxAtom atom)
@@ -138,7 +138,7 @@ public class Adopter
                     throw new AssertionException($"Can't get operator name from token {opToken}");
                 }
 
-                if (!guide.TryResolveOperator(opName, ref item.configuration))
+                if (!Guide.TryResolveOperator(opName, ref item.configuration))
                 {
                     throw Error(opToken, $"Can't resolve operator '{opName}'");
                 }
@@ -268,7 +268,7 @@ public class Adopter
                 LeftExpression = items[0].expr!,
                 Tail = tail,
                 Precedence = precedence,
-                IsBoolean = precedence == guide.BooleanRelationPrecedence
+                IsBoolean = precedence == Guide.BooleanRelationPrecedence
             };
         }
         else
@@ -279,7 +279,7 @@ public class Adopter
 
     QuantizationExpression AdoptQuantization(SyntaxQuantization quantization)
     {
-        if (!guide.IsQuantizationSymbol(quantization.token.TokenSpan, out var precedence))
+        if (!Guide.IsQuantizationSymbol(quantization.token.TokenSpan, out var precedence))
         {
             throw Error(quantization.token, "Symbol is not a quantization");
         }

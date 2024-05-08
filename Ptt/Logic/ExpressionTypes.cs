@@ -152,7 +152,7 @@ public class RelationalExpression : SequenceExpression
 
     public Boolean IsRelation => Tail.Length == 1;
 
-    public override Boolean IsUnordered => IsRelation && Tail[0].relation.Flags.symmetric;
+    public override Boolean IsUnordered => IsRelation && Tail[0].relation.Flags.HasFlag(RelationFlags.Symmetric);
 
     public override IEnumerable<(String? op, Expression expr)> GetItems(Boolean useIds)
     {

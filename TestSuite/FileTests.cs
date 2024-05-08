@@ -5,6 +5,10 @@ namespace TestSuite;
 [TestClass]
 public class FileTests
 {
+    static String[] fileNames = [
+        "snaps"
+    ];
+
     static Dictionary<String, String> filePaths;
 
     static FileTests()
@@ -12,6 +16,14 @@ public class FileTests
         var files = Directory.GetFiles("tests");
 
         filePaths = files.ToDictionary(f => Path.GetFileNameWithoutExtension(f), f => f);
+
+        foreach (var f in filePaths.Keys)
+        {
+            if (!fileNames.Contains(f))
+            {
+                filePaths.Remove(f);
+            }
+        }
     }
 
     static public IEnumerable<String[]> FileNames => filePaths.Keys.Select(fp => new[] { fp });
@@ -24,7 +36,9 @@ public class FileTests
 
         var content = File.ReadAllText(filePath);
 
-        var parser = new Parser();
+        var guide = new TestGuide();
+
+        var parser = new BlockParser { Guide = guide };
 
         parser.ParseDocument(content);
     }

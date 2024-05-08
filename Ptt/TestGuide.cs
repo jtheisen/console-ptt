@@ -113,12 +113,12 @@ public interface IAdoptionGuide
     Boolean TryResolveOperator(String name, [NotNullWhen(true)] ref OperatorConfiguration? configuration);
 }
 
-public class TestGuide : IParserGuide, IAdoptionGuide
+public class TestGuide : IParserGuide, IAdoptionGuide, ISnapRules
 {
     static String BooleanPrecedenceOrder = "⇒⇐⇔ ,∨∧ =";
     static String DomainPrecedenceOrder = "+- */ ^";
     static String BooleanRelationSymbols = "⇒⇐⇔⇔";
-    static String DomainRelationSymbols = "==  <>≤≥  ⊂⊃  ⊆⊇  ∊∍";
+    static String PredicateRelationSymbols = "==  <>≤≥  ⊂⊃  ⊆⊇  ∊∍";
 
     static String SetSymbols = "ℕℤℚℝℂ";
 
@@ -135,15 +135,19 @@ public class TestGuide : IParserGuide, IAdoptionGuide
 
     Dictionary<String, Symbol> symbols;
 
+    List<SnapRule> snapRules;
+
     public Double BooleanRelationPrecedence { get; }
 
     public TestGuide()
     {
-        precedences = new Dictionary<Char, Double>();
+        precedences = new();
 
-        operators = new Dictionary<String, OperatorConfiguration>();
+        operators = new();
 
-        symbols = new Dictionary<String, Symbol>();
+        symbols = new();
+
+        snapRules = new();
 
         {
             var precedence = 0;
@@ -175,14 +179,16 @@ public class TestGuide : IParserGuide, IAdoptionGuide
         BooleanRelationPrecedence = GetOperatorPrecedence('⇒');
 
         AddRelations(BooleanRelationSymbols, BooleanRelationPrecedence);
-        AddRelations(DomainRelationSymbols, 0);
+        AddRelations(PredicateRelationSymbols, 0);
 
         AddSymbols();
+
+        AddSnapRules();
     }
 
     Double? GetOperatorPrecedenceOrNot(Char chr)
     {
-        if (DomainRelationSymbols.IndexOf(chr) != -1)
+        if (PredicateRelationSymbols.IndexOf(chr) != -1)
         {
             return 0;
         }
@@ -418,5 +424,26 @@ public class TestGuide : IParserGuide, IAdoptionGuide
             default:
                 throw new Exception($"Unknown relation character '{c}'");
         }
+    }
+
+    void AddSnapRules()
+    {
+        OperatorConfiguration? configuration = null;
+
+        if (!TryResolveOperator("=", ref configuration) || configuration is not Relation relation)
+        {
+            throw new AssertionException("Expected a relation");
+        }
+
+        // symmetric
+        snapRules.Add(new SnapRule((s, r) => (r.rhs, r.relation, r.lhs)));
+
+        // transitive
+        snapRules.Add(new SnapRule((s, r) => (r.rhs, r.relation, r.lhs)));
+    }
+
+    public IEnumerable<SnapRule> GetRules(Relationship relationship)
+    {
+        throw new NotImplementedException();
     }
 }

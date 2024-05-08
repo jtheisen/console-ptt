@@ -1,0 +1,3 @@
+﻿#take A=B:
+  #assert proven A=B.
+.

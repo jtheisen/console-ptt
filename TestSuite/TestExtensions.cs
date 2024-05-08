@@ -25,7 +25,7 @@ public static class TestExtensions
         return lines;
     }
 
-    public static SyntaxExpression ParseExpression(this Parser parser, IEnumerable<InputToken> input)
+    public static SyntaxExpression ParseExpression(this ExpressionParser parser, IEnumerable<InputToken> input)
     {
         var enumerator = input.Where(t => t.cls.IsSubstantial()).GetEnumerator();
 
@@ -36,21 +36,24 @@ public static class TestExtensions
         return result;
     }
 
-    public static SyntaxExpression ParseExpression(this Parser parser, String input)
+    public static SyntaxExpression ParseExpression(this ExpressionParser parser, String input)
         => parser.ParseExpression(parser.Tokenize(input.SplitLines()));
 
-    public static SyntaxDirectiveBlock ParseDocument(this Parser parser, IEnumerable<InputToken> input)
+    public static ContentBlock ParseDocument(this BlockParser parser, IEnumerable<InputToken> input)
     {
         var enumerator = input.Where(t => t.cls.IsSubstantial()).GetEnumerator();
 
         enumerator.MoveNext();
 
-        var result = parser.ParseDirectiveBlock(enumerator);
+        var runtime = new RuntimeContext { Guide = new TestGuide() };
 
-        return result;
+        var rootBlock = new ContentBlock(runtime);
+
+        parser.ParseContent(rootBlock, enumerator);
+
+        return rootBlock;
     }
 
-    public static SyntaxDirectiveBlock ParseDocument(this Parser parser, String input)
+    public static ContentBlock ParseDocument(this BlockParser parser, String input)
         => parser.ParseDocument(parser.Tokenize(input.SplitLines()));
-
 }

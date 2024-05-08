@@ -60,11 +60,15 @@ public class RelationshipsState
     }
 }
 
-public struct RelationVariant
+public struct RelationVariant /*: IEquatable<RelationVariant>*/
 {
     public required Relation relation;
     public required RelationshipFlags flags;
 
+    //public Boolean Equals(RelationVariant other)
+    //{
+    //    return relation.Equals(other.relation) && flags.Equals(other.flags);
+    //}
 }
 
 public struct ExpressionRelationshipTail
@@ -78,6 +82,28 @@ public struct Relationship
     public Expression lhs;
     public RelationVariant relation;
     public Expression rhs;
+
+    public Relationship Conversed()
+    {
+        var copy = this;
+
+        ref var flags = ref copy.relation.flags;
+
+        flags.conversed = !flags.conversed;
+
+        return copy;
+    }
+
+    public Relationship Negated()
+    {
+        var copy = this;
+
+        ref var flags = ref copy.relation.flags;
+
+        flags.negated = !flags.negated;
+
+        return copy;
+    }
 
     public static implicit operator Relationship((Expression lhs, RelationVariant relation, Expression rhs) r)
     {
@@ -124,6 +150,16 @@ public static class StateExtensions
         foreach (var r in expr.GetRelationships())
         {
             state.Add(r);
+        }
+    }
+
+    public static void AddSnap(this RelationshipsState state, Relationship relationship, ISnapRules rules)
+    {
+        state.Add(relationship);
+
+        foreach (var rule in rules.GetRules(relationship))
+        {
+            state.AddSnap(rule.Rule(state, relationship), rules);
         }
     }
 }
